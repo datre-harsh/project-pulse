@@ -1,0 +1,39 @@
+# Documentation and provided spec files
+README.md
+*.docx
+IMPLEMENTATION.md
+SUBMISSION/
+
+# AI / planning artifacts
+.windsurf/
+*plan*.md
+*Plan*.md
+
+# Local tooling
+/tools/
+
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Java / backend
+backend/target/
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Runtime data
+data/
+backend/data/
