@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -17,148 +16,108 @@ public class ProjectPulseController {
 
     private final ProjectPulseService service;
 
-    @GetMapping("/users")
-    public List<UserAccount> getUsers(@RequestParam(required = false) Role role) {
-        return service.getUsers(role);
+    @GetMapping("/rubrics")
+    public List<RubricDetailResponse> getRubrics(@RequestParam(required = false) String name) {
+        return service.getRubrics(name);
     }
 
-    @GetMapping("/users/{id}")
-    public UserAccount getUser(@PathVariable Long id) {
-        return service.getUser(id);
+    @GetMapping("/rubrics/{id}")
+    public RubricDetailResponse getRubric(@PathVariable Long id) {
+        return service.getRubric(id);
     }
 
-    @PostMapping("/users")
-    public UserAccount createUser(@Valid @RequestBody UserAccountRequest req) {
-        return service.createUser(req);
+    @PostMapping("/rubrics")
+    public RubricDetailResponse createRubric(@Valid @RequestBody RubricRequest req) {
+        return service.createRubric(req);
     }
 
-    @PutMapping("/users/{id}")
-    public UserAccount updateUser(@PathVariable Long id, @Valid @RequestBody UserAccountRequest req) {
-        return service.updateUser(id, req);
+    @PutMapping("/rubrics/{id}")
+    public RubricDetailResponse updateRubric(@PathVariable Long id, @Valid @RequestBody RubricRequest req) {
+        return service.updateRubric(id, req);
     }
 
-    @DeleteMapping("/users/{id}")
-    public void deleteUser(@PathVariable Long id) {
-        service.deleteUser(id);
+    @GetMapping("/options/instructors")
+    public List<UserSummaryResponse> getInstructorOptions() {
+        return service.getInstructorOptions();
     }
 
     @GetMapping("/sections")
-    public List<Section> getSections() {
-        return service.getSections();
+    public List<SectionSummaryResponse> getSections(@RequestParam(required = false) String name) {
+        return service.getSections(name);
     }
 
     @GetMapping("/sections/{id}")
-    public Section getSection(@PathVariable Long id) {
+    public SectionDetailResponse getSection(@PathVariable Long id) {
         return service.getSection(id);
     }
 
     @PostMapping("/sections")
-    public Section createSection(@Valid @RequestBody SectionRequest req) {
+    public SectionDetailResponse createSection(@Valid @RequestBody SectionRequest req) {
         return service.createSection(req);
     }
 
     @PutMapping("/sections/{id}")
-    public Section updateSection(@PathVariable Long id, @Valid @RequestBody SectionRequest req) {
+    public SectionDetailResponse updateSection(@PathVariable Long id, @Valid @RequestBody SectionRequest req) {
         return service.updateSection(id, req);
     }
 
+    @PutMapping("/sections/{id}/active-weeks")
+    public SectionDetailResponse updateActiveWeeks(@PathVariable Long id, @RequestBody ActiveWeeksRequest req) {
+        return service.updateActiveWeeks(id, req);
+    }
+
+    @PostMapping("/sections/{id}/student-invitations")
+    public List<StudentInvitationResponse> inviteStudents(@PathVariable Long id, @Valid @RequestBody StudentInvitationRequest req) {
+        return service.inviteStudents(id, req);
+    }
+
     @GetMapping("/teams")
-    public List<Team> getTeams(@RequestParam(required = false) Long sectionId) {
-        return service.getTeams(sectionId);
+    public List<TeamSummaryResponse> getTeams(
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) String sectionName,
+            @RequestParam(required = false) String teamName,
+            @RequestParam(required = false) Long instructorId
+    ) {
+        return service.getTeams(sectionId, sectionName, teamName, instructorId);
     }
 
     @GetMapping("/teams/{id}")
-    public Team getTeam(@PathVariable Long id) {
+    public TeamDetailResponse getTeam(@PathVariable Long id) {
         return service.getTeam(id);
     }
 
     @PostMapping("/teams")
-    public Team createTeam(@Valid @RequestBody TeamRequest req) {
+    public TeamDetailResponse createTeam(@Valid @RequestBody TeamRequest req) {
         return service.createTeam(req);
     }
 
     @PutMapping("/teams/{id}")
-    public Team updateTeam(@PathVariable Long id, @Valid @RequestBody TeamRequest req) {
+    public TeamDetailResponse updateTeam(@PathVariable Long id, @Valid @RequestBody TeamRequest req) {
         return service.updateTeam(id, req);
     }
 
-    @DeleteMapping("/teams/{id}")
-    public void deleteTeam(@PathVariable Long id) {
-        service.deleteTeam(id);
-    }
-
-    @PostMapping("/teams/{teamId}/students/{studentId}")
-    public Team addStudentToTeam(@PathVariable Long teamId, @PathVariable Long studentId) {
-        return service.addStudentToTeam(teamId, studentId);
-    }
-
-    @DeleteMapping("/teams/{teamId}/students/{studentId}")
-    public Team removeStudentFromTeam(@PathVariable Long teamId, @PathVariable Long studentId) {
-        return service.removeStudentFromTeam(teamId, studentId);
-    }
-
-    @PostMapping("/teams/{teamId}/instructors/{instructorId}")
-    public Team addInstructorToTeam(@PathVariable Long teamId, @PathVariable Long instructorId) {
-        return service.addInstructorToTeam(teamId, instructorId);
-    }
-
-    @DeleteMapping("/teams/{teamId}/instructors/{instructorId}")
-    public Team removeInstructorFromTeam(@PathVariable Long teamId, @PathVariable Long instructorId) {
-        return service.removeInstructorFromTeam(teamId, instructorId);
-    }
-
     @GetMapping("/rubric")
-    public List<RubricCriterion> getRubricCriteria() {
-        return service.getRubricCriteria();
+    public List<RubricCriterionResponse> getRubricCriteria(@RequestParam Long sectionId) {
+        return service.getRubricCriteria(sectionId);
     }
 
     @PostMapping("/rubric")
-    public RubricCriterion createRubricCriterion(@Valid @RequestBody RubricCriterionRequest req) {
-        return service.createRubricCriterion(req);
+    public RubricDetailResponse createRubricCriterion(@Valid @RequestBody RubricRequest req) {
+        return service.createRubric(req);
     }
 
     @PutMapping("/rubric/{id}")
-    public RubricCriterion updateRubricCriterion(@PathVariable Long id, @Valid @RequestBody RubricCriterionRequest req) {
-        return service.updateRubricCriterion(id, req);
+    public RubricDetailResponse updateRubricCriterion(@PathVariable Long id, @Valid @RequestBody RubricRequest req) {
+        return service.updateRubric(id, req);
     }
 
-    @GetMapping("/war")
-    public List<WarActivity> getWarActivities() {
-        return service.getWarActivities();
+    @GetMapping("/sections/{id}/rubric")
+    public RubricDetailResponse getSectionRubric(@PathVariable Long id) {
+        return service.getSectionRubric(id);
     }
 
-    @PostMapping("/war")
-    public WarActivity createWarActivity(@Valid @RequestBody WarActivityRequest req) {
-        return service.createWarActivity(req);
-    }
-
-    @PutMapping("/war/{id}")
-    public WarActivity updateWarActivity(@PathVariable Long id, @Valid @RequestBody WarActivityRequest req) {
-        return service.updateWarActivity(id, req);
-    }
-
-    @DeleteMapping("/war/{id}")
-    public void deleteWarActivity(@PathVariable Long id) {
-        service.deleteWarActivity(id);
-    }
-
-    @PostMapping("/peer-evaluations")
-    public PeerEvaluation submitPeerEvaluation(@Valid @RequestBody PeerEvaluationRequest req) {
-        return service.submitPeerEvaluation(req);
-    }
-
-    @GetMapping("/students/{studentId}/peer-evaluation-report")
-    public List<Map<String, Object>> getStudentPeerEvaluationReport(@PathVariable Long studentId) {
-        return service.getStudentPeerEvaluationReport(studentId);
-    }
-
-    @PostMapping("/reports/peer-evaluation")
-    public List<PeerEvaluation> generatePeerEvaluationReport(@Valid @RequestBody PeerEvaluationReportRequest req) {
-        return service.generatePeerEvaluationReport(req);
-    }
-
-    @PostMapping("/reports/war")
-    public List<WarActivity> generateWarReport(@Valid @RequestBody WarReportRequest req) {
-        return service.generateWarReport(req);
+    @GetMapping("/legacy/rubric-criteria")
+    public List<RubricCriterionResponse> getAllRubricCriteria() {
+        return service.getRubricCriteria();
     }
 }

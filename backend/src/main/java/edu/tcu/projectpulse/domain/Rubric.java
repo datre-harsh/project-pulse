@@ -6,24 +6,16 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document("users")
+@Document("rubrics")
 @Getter
 @Setter
-public class UserAccount {
+public class Rubric {
 
-    public static final String SEQUENCE_NAME = "users_sequence";
+    public static final String SEQUENCE_NAME = "rubrics_sequence";
 
     @Id
     private Long id;
 
     @Indexed(unique = true)
-    private String email;
-
-    private String firstName;
-
-    private String lastName;
-
-    private Role role;
-
-    private boolean active = true;
+    private String name;
 }

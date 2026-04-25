@@ -6,29 +6,30 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.time.LocalDateTime;
 
-@Document("teams")
+@Document("student_invitations")
 @Getter
 @Setter
-public class Team {
+public class StudentInvitation {
 
-    public static final String SEQUENCE_NAME = "teams_sequence";
+    public static final String SEQUENCE_NAME = "student_invitations_sequence";
 
     @Id
     private Long id;
 
     private Long sectionId;
 
+    private String email;
+
     @Indexed(unique = true)
-    private String name;
+    private String token;
 
-    private String description;
+    private String subject;
 
-    private String websiteUrl;
+    private String message;
 
-    private Set<Long> studentIds = new HashSet<>();
+    private LocalDateTime sentAt;
 
-    private Set<Long> instructorIds = new HashSet<>();
+    private boolean accepted = false;
 }
