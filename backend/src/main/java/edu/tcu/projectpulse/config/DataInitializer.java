@@ -44,11 +44,16 @@ public class DataInitializer implements CommandLineRunner {
         createUserIfMissing("alex.instructor@projectpulse.local", "Alex", "Instructor", Role.INSTRUCTOR);
         createUserIfMissing("blair.instructor@projectpulse.local", "Blair", "Instructor", Role.INSTRUCTOR);
         createUserIfMissing("casey.instructor@projectpulse.local", "Casey", "Instructor", Role.INSTRUCTOR);
+        createUserIfMissing("deactivated.instructor@projectpulse.local", "Deactivated", "Instructor", Role.INSTRUCTOR, false);
         createUserIfMissing("student1@projectpulse.local", "Sam", "Student", Role.STUDENT);
         createUserIfMissing("student2@projectpulse.local", "Taylor", "Student", Role.STUDENT);
     }
 
     private void createUserIfMissing(String email, String firstName, String lastName, Role role) {
+        createUserIfMissing(email, firstName, lastName, role, true);
+    }
+
+    private void createUserIfMissing(String email, String firstName, String lastName, Role role, boolean active) {
         if (userRepo.findByEmailIgnoreCase(email).isPresent()) {
             return;
         }
@@ -58,7 +63,7 @@ public class DataInitializer implements CommandLineRunner {
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setRole(role);
-        user.setActive(true);
+        user.setActive(active);
         userRepo.save(user);
     }
 

@@ -79,6 +79,11 @@ public class ProjectPulseController {
         return service.deactivateInstructor(id, req);
     }
 
+    @PutMapping("/instructors/{id}/reactivate")
+    public InstructorDetailResponse reactivateInstructor(@PathVariable Long id) {
+        return service.reactivateInstructor(id);
+    }
+
     @GetMapping("/students/{id}")
     public StudentDetailResponse getStudent(
             @PathVariable Long id,

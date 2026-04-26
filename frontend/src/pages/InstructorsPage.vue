@@ -79,6 +79,9 @@
         <div v-if="selectedInstructor.status === 'Active'" class="mt-4">
           <v-btn color="warning" variant="tonal" @click="startDeactivateInstructor">Deactivate Instructor</v-btn>
         </div>
+        <div v-if="selectedInstructor.status === 'Deactivated'" class="mt-4">
+          <v-btn color="success" variant="tonal" @click="startReactivateInstructor">Reactivate Instructor</v-btn>
+        </div>
       </v-card-text>
     </v-card>
 
@@ -108,6 +111,26 @@
           <v-spacer />
           <v-btn variant="text" @click="cancelDeactivateInstructor">Cancel</v-btn>
           <v-btn color="warning" :loading="deactivating" @click="confirmDeactivateInstructor">Confirm Deactivation</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="reactivateDialog" max-width="540">
+      <v-card v-if="selectedInstructor">
+        <v-card-title>Confirm Instructor Reactivation</v-card-title>
+        <v-card-text>
+          <p class="mb-4">
+            Reactivate <strong>{{ selectedInstructor.firstName }} {{ selectedInstructor.lastName }}</strong>?
+          </p>
+
+          <p class="text-body-2 mb-0">
+            If you continue, this instructor will regain access to the system and be notified of their reactivation.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="cancelReactivateInstructor">Cancel</v-btn>
+          <v-btn color="success" :loading="reactivating" @click="confirmReactivateInstructor">Confirm Reactivation</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -207,6 +230,8 @@ const selectedInstructor = ref(null)
 const deactivateDialog = ref(false)
 const deactivating = ref(false)
 const deactivationReason = ref('')
+const reactivateDialog = ref(false)
+const reactivating = ref(false)
 
 const searchForm = ref({
   firstName: '',
@@ -264,6 +289,7 @@ const clearSearch = () => {
   selectedInstructor.value = null
   deactivateDialog.value = false
   deactivationReason.value = ''
+  reactivateDialog.value = false
   error.value = ''
 }
 
@@ -311,6 +337,7 @@ const viewInstructor = async (instructor) => {
   success.value = ''
   deactivateDialog.value = false
   deactivationReason.value = ''
+  reactivateDialog.value = false
 
   try {
     // Ralph: Load one instructor-level detail record so every matching search row lands on the same canonical detail view.
@@ -367,6 +394,45 @@ const confirmDeactivateInstructor = async () => {
     error.value = err.response?.data?.error || 'Unable to deactivate instructor.'
   } finally {
     deactivating.value = false
+  }
+}
+
+const startReactivateInstructor = () => {
+  if (!selectedInstructor.value || selectedInstructor.value.status !== 'Deactivated') {
+    return
+  }
+
+  reactivateDialog.value = true
+  error.value = ''
+  success.value = ''
+}
+
+const cancelReactivateInstructor = () => {
+  reactivateDialog.value = false
+}
+
+const confirmReactivateInstructor = async () => {
+  if (!selectedInstructor.value) {
+    return
+  }
+
+  reactivating.value = true
+  error.value = ''
+  success.value = ''
+
+  try {
+    const res = await api.put(`/instructors/${selectedInstructor.value.id}/reactivate`)
+    selectedInstructor.value = res.data
+    // Ralph: Update every visible row for this instructor because the same person can appear once per supervised team.
+    searchResults.value = searchResults.value
+      .map((entry) => entry.id === selectedInstructor.value.id ? { ...entry, status: 'Active' } : entry)
+      .filter((entry) => searchForm.value.status !== 'DEACTIVATED' || entry.id !== selectedInstructor.value.id)
+    success.value = `${selectedInstructor.value.firstName} ${selectedInstructor.value.lastName} was reactivated and notified.`
+    reactivateDialog.value = false
+  } catch (err) {
+    error.value = err.response?.data?.error || 'Unable to reactivate instructor.'
+  } finally {
+    reactivating.value = false
   }
 }
 

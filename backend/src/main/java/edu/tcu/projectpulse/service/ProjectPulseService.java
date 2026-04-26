@@ -306,6 +306,26 @@ public class ProjectPulseService {
         return getInstructor(id);
     }
 
+    public InstructorDetailResponse reactivateInstructor(Long id) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be reactivated through this endpoint");
+        }
+        if (instructor.isActive()) {
+            throw new ApiException("Instructor is already active");
+        }
+
+        // Reactivate the instructor and clear deactivation reason
+        instructor.setActive(true);
+        instructor.setDeactivationReason(null);
+        userRepo.save(instructor);
+        
+        // Create notification for the instructor
+        createNotification(id, "Your instructor account has been reactivated. You now have access to The Peer Evaluation Tool.");
+        
+        return getInstructor(id);
+    }
+
     public void deleteStudent(Long id) {
         UserAccount student = getUser(id);
         if (student.getRole() != Role.STUDENT) {
