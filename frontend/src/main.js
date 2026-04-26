@@ -10,11 +10,15 @@ import DashboardPage from './pages/DashboardPage.vue'
 import SectionsPage from './pages/SectionsPage.vue'
 import TeamsPage from './pages/TeamsPage.vue'
 import RubricPage from './pages/RubricPage.vue'
+import StudentsPage from './pages/StudentsPage.vue'
+import InstructorsPage from './pages/InstructorsPage.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
   { path: '/sections', component: SectionsPage },
   { path: '/teams', component: TeamsPage },
+  { path: '/students', component: StudentsPage },
+  { path: '/instructors', component: InstructorsPage },
   { path: '/rubric', component: RubricPage }
 ]
 

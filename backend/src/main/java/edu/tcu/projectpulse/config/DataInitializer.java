@@ -41,6 +41,9 @@ public class DataInitializer implements CommandLineRunner {
     private void seedUsers() {
         createUserIfMissing("admin@projectpulse.local", "Admin", "User", Role.ADMIN);
         createUserIfMissing("instructor@projectpulse.local", "Ingrid", "Instructor", Role.INSTRUCTOR);
+        createUserIfMissing("alex.instructor@projectpulse.local", "Alex", "Instructor", Role.INSTRUCTOR);
+        createUserIfMissing("blair.instructor@projectpulse.local", "Blair", "Instructor", Role.INSTRUCTOR);
+        createUserIfMissing("casey.instructor@projectpulse.local", "Casey", "Instructor", Role.INSTRUCTOR);
         createUserIfMissing("student1@projectpulse.local", "Sam", "Student", Role.STUDENT);
         createUserIfMissing("student2@projectpulse.local", "Taylor", "Student", Role.STUDENT);
     }

@@ -12,6 +12,8 @@ public record SectionDetailResponse(
         RubricDetailResponse rubric,
         Set<Integer> activeWeekNumbers,
         Set<Integer> inactiveWeekNumbers,
+        List<UserSummaryResponse> students,
+        List<UserSummaryResponse> instructors,
         List<TeamSummaryResponse> teams,
         List<UserSummaryResponse> unassignedStudents,
         List<UserSummaryResponse> unassignedInstructors,

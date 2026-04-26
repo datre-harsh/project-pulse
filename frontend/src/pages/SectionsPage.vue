@@ -21,6 +21,26 @@
           <v-col cols="12" md="2">
             <v-select v-model="form.rubricId" :items="rubrics" item-title="name" item-value="id" label="Rubric" />
           </v-col>
+          <v-col cols="12" md="6">
+            <v-select
+              v-model="form.studentIds"
+              :items="students"
+              item-title="email"
+              item-value="id"
+              label="Students In Section"
+              multiple
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-select
+              v-model="form.instructorIds"
+              :items="instructors"
+              item-title="email"
+              item-value="id"
+              label="Instructors In Section"
+              multiple
+            />
+          </v-col>
           <v-col cols="12">
             <v-text-field
               v-model="form.inactiveWeeksText"
@@ -114,6 +134,8 @@ import api from '../api'
 
 const sections = ref([])
 const rubrics = ref([])
+const students = ref([])
+const instructors = ref([])
 const selectedSection = ref(null)
 const search = ref('')
 const error = ref('')
@@ -135,6 +157,8 @@ const form = ref({
   startDate: '',
   endDate: '',
   rubricId: null,
+  studentIds: [],
+  instructorIds: [],
   inactiveWeeksText: ''
 })
 
@@ -155,6 +179,15 @@ const formatUser = (user) => `${user.firstName} ${user.lastName}`
 const loadRubrics = async () => {
   const res = await api.get('/rubrics')
   rubrics.value = res.data
+}
+
+const loadUserOptions = async () => {
+  const [studentRes, instructorRes] = await Promise.all([
+    api.get('/options/students'),
+    api.get('/options/instructors')
+  ])
+  students.value = studentRes.data
+  instructors.value = instructorRes.data
 }
 
 const loadSections = async () => {
@@ -179,6 +212,8 @@ const loadSectionIntoForm = async (id) => {
     startDate: selectedSection.value.startDate,
     endDate: selectedSection.value.endDate,
     rubricId: selectedSection.value.rubric.id,
+    studentIds: selectedSection.value.students.map((student) => student.id),
+    instructorIds: selectedSection.value.instructors.map((instructor) => instructor.id),
     inactiveWeeksText: selectedSection.value.inactiveWeekNumbers.join(', ')
   }
 }
@@ -190,6 +225,8 @@ const resetForm = () => {
     startDate: '',
     endDate: '',
     rubricId: null,
+    studentIds: [],
+    instructorIds: [],
     inactiveWeeksText: ''
   }
 }
@@ -203,6 +240,8 @@ const submitSection = async () => {
     startDate: form.value.startDate,
     endDate: form.value.endDate,
     rubricId: form.value.rubricId,
+    studentIds: form.value.studentIds,
+    instructorIds: form.value.instructorIds,
     inactiveWeekNumbers: parseWeeks(form.value.inactiveWeeksText)
   }
 
@@ -246,6 +285,6 @@ const sendInvites = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([loadRubrics(), loadSections()])
+  await Promise.all([loadRubrics(), loadSections(), loadUserOptions()])
 })
 </script>
