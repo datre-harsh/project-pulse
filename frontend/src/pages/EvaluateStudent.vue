@@ -38,6 +38,22 @@
               </v-col>
             </v-row>
             
+            <!-- Generate Report Button -->
+            <v-row class="mb-4">
+              <v-col cols="12">
+                <v-btn
+                  color="primary"
+                  size="large"
+                  :disabled="!selectedWeekId || !selectedSectionId"
+                  :loading="loading"
+                  @click="loadSectionReport"
+                >
+                  <v-icon class="mr-2">mdi-chart-box</v-icon>
+                  Generate Report
+                </v-btn>
+              </v-col>
+            </v-row>
+            
             <!-- Loading State -->
             <v-row v-if="loading" class="justify-center">
               <v-col cols="12" class="text-center">
@@ -221,9 +237,9 @@ const weekOptions = [
 ]
 
 const sectionOptions = ref([
-  { title: 'CS 101 - Introduction to Computer Science', value: 1 },
-  { title: 'CS 201 - Data Structures', value: 2 },
-  { title: 'CS 301 - Algorithms', value: 3 }
+  { title: 'CS 201 Section A', value: 1 },
+  { title: 'CS 201 Section B', value: 2 },
+  { title: 'CS 301 Section A', value: 3 }
 ])
 
 // Step handlers
@@ -234,10 +250,6 @@ const onWeekChange = () => {
 
 const onSectionChange = () => {
   sectionReport.value = null
-  // Auto-load report when both week and section are selected
-  if (selectedWeekId.value && selectedSectionId.value) {
-    loadSectionReport()
-  }
 }
 
 // Load section evaluation report

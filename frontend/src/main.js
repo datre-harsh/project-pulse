@@ -18,6 +18,7 @@ import SubmitPeerEval from './pages/SubmitPeerEval.vue'
 import ViewPeerEvalReport from './pages/ViewPeerEvalReport.vue'
 import RegisterInstructor from './pages/RegisterInstructor.vue'
 import EvaluateStudent from './pages/EvaluateStudent.vue'
+import TeamWARReport from './pages/TeamWARReport.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
@@ -31,6 +32,7 @@ const routes = [
   { path: '/peer-evaluation-report', component: ViewPeerEvalReport },
   { path: '/register-instructor/:token', component: RegisterInstructor },
   { path: '/evaluate-student', component: EvaluateStudent },
+  { path: '/team-war-report', component: TeamWARReport },
   { path: '/profile', component: ProfilePage }
 ]
 

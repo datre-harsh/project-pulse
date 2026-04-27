@@ -202,6 +202,13 @@ public class ProjectPulseController {
         return service.getSectionEvaluationReport(instructorId, sectionId, weekId);
     }
 
+    // Team WAR Report Endpoints (UC-32)
+    
+    @GetMapping("/teams/{teamId}/war-report/{weekId}")
+    public TeamWARReportResponse getTeamWARReport(@PathVariable Long teamId, @PathVariable String weekId) {
+        return service.getTeamWARReport(teamId, weekId);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

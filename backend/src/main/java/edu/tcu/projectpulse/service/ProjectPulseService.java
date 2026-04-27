@@ -1710,4 +1710,74 @@ public class ProjectPulseService {
         // Format as "X/60" (assuming max score is 60 based on PDF example)
         return String.format("%.0f/60", Math.round(averageScore));
     }
+    
+    // Team WAR Report Methods (UC-32)
+    
+    public TeamWARReportResponse getTeamWARReport(Long teamId, String weekId) {
+        // Get team information
+        Team team = getTeamEntity(teamId);
+        
+        // Get all students in the team
+        List<UserAccount> teamStudents = team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+        
+        // Generate mock data for testing (replace with actual data fetching)
+        List<StudentActivity> activeStudents = generateMockActiveStudents();
+        List<String> missingStudents = generateMockMissingStudents();
+        
+        return new TeamWARReportResponse(
+                teamId,
+                team.getName(),
+                weekId,
+                activeStudents,
+                missingStudents,
+                "Team WAR report generated successfully"
+        );
+    }
+    
+    private List<StudentActivity> generateMockActiveStudents() {
+        // Mock data for testing as specified
+        List<ActivityDetail> johnDoeActivities = List.of(
+                new ActivityDetail(
+                    "Development", 
+                    "Bug fixing", 
+                    "Fix critical bugs in the authentication module", 
+                    4.0, 
+                    3.5, 
+                    "Completed"
+                ),
+                new ActivityDetail(
+                    "Documentation", 
+                    "API documentation", 
+                    "Write comprehensive API documentation for REST endpoints", 
+                    3.0, 
+                    3.0, 
+                    "Completed"
+                )
+        );
+        
+        List<ActivityDetail> janeSmithActivities = List.of(
+                new ActivityDetail(
+                    "Testing", 
+                    "Unit testing", 
+                    "Write unit tests for the user service module", 
+                    5.0, 
+                    4.5, 
+                    "In Progress"
+                )
+        );
+        
+        // Sort by last name alphabetically
+        return List.of(
+                new StudentActivity("John Doe", johnDoeActivities),
+                new StudentActivity("Jane Smith", janeSmithActivities)
+        );
+    }
+    
+    private List<String> generateMockMissingStudents() {
+        // Mock data for testing as specified
+        return List.of("Bob Lazy");
+    }
 }
