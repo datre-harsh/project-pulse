@@ -108,6 +108,11 @@ public class ProjectPulseController {
         return service.inviteInstructors(req);
     }
 
+    @PostMapping("/students/register")
+    public StudentRegistrationResponse registerStudent(@Valid @RequestBody StudentRegistrationRequest req) {
+        return service.registerStudent(req);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

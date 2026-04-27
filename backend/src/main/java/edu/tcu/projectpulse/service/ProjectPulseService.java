@@ -21,6 +21,7 @@ import edu.tcu.projectpulse.repo.StudentInvitationRepository;
 import edu.tcu.projectpulse.repo.TeamRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -48,6 +49,7 @@ public class ProjectPulseService {
     private final RubricCriterionRepository rubricRepoCriteria;
     private final StudentInvitationRepository invitationRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public List<RubricDetailResponse> getRubrics(String name) {
         List<Rubric> rubrics = (name == null || name.isBlank())
@@ -686,7 +688,6 @@ public class ProjectPulseService {
                 throw new ApiException("Student " + studentId + " is not part of the selected section");
             }
         }
-
         Set<Long> sectionInstructors = section.getInstructorIds() == null ? Set.of() : section.getInstructorIds();
         for (Long instructorId : req.instructorIds() == null ? Set.<Long>of() : req.instructorIds()) {
             if (!sectionInstructors.contains(instructorId)) {
@@ -695,7 +696,7 @@ public class ProjectPulseService {
         }
 
         Team probe = new Team();
-        probe.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
+        probe.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
         validateBr1(probe);
     }
 
@@ -704,8 +705,8 @@ public class ProjectPulseService {
         team.setName(req.name().trim());
         team.setDescription(req.description().trim());
         team.setWebsiteUrl(req.websiteUrl() == null || req.websiteUrl().isBlank() ? null : req.websiteUrl().trim());
-        team.setStudentIds(req.studentIds() == null ? new HashSet<>() : new HashSet<>(req.studentIds()));
-        team.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
+        team.setStudentIds(req.studentIds() == null ? new HashSet<Long>() : new HashSet<>(req.studentIds()));
+        team.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
         validateBr1(team);
     }
 
@@ -1134,6 +1135,38 @@ public class ProjectPulseService {
         notification.setMessage(message);
         notification.setCreatedAt(LocalDateTime.now());
         notificationRepo.save(notification);
+    }
+
+    public StudentRegistrationResponse registerStudent(StudentRegistrationRequest request) {
+        // Extension 2a: Check if student already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("An account with this email already exists");
+        }
+
+        // Mock invitation token verification (for now, accept any non-empty token)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+
+        // Create new student account
+        UserAccount student = new UserAccount();
+        student.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        student.setFirstName(request.getFirstName().trim());
+        student.setLastName(request.getLastName().trim());
+        student.setEmail(request.getEmail().trim().toLowerCase());
+        student.setPassword(passwordEncoder.encode(request.getPassword()));
+        student.setRole(Role.STUDENT);
+        student.setActive(true);
+
+        UserAccount savedStudent = userRepo.save(student);
+
+        return new StudentRegistrationResponse(
+                savedStudent.getId().toString(),
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Student account created successfully"
+        );
     }
 
     private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {

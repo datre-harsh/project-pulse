@@ -28,4 +28,6 @@ public class UserAccount {
     private boolean active = true;
 
     private String deactivationReason;
+
+    private String password;
 }
