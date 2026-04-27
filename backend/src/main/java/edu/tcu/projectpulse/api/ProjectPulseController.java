@@ -179,6 +179,13 @@ public class ProjectPulseController {
         return service.submitPeerEvaluation(evaluatorId, req);
     }
 
+    @GetMapping("/students/peer-evaluations/report/{weekId}")
+    public PeerEvaluationReportResponse getPeerEvaluationReport(@PathVariable String weekId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        return service.getPeerEvaluationReport(studentId, weekId);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

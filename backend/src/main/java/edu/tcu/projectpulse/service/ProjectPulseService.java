@@ -12,6 +12,8 @@ import edu.tcu.projectpulse.domain.StudentInvitation;
 import edu.tcu.projectpulse.domain.Team;
 import edu.tcu.projectpulse.domain.UserAccount;
 import edu.tcu.projectpulse.dto.*;
+import edu.tcu.projectpulse.domain.WeeklyActivity;
+import edu.tcu.projectpulse.domain.PeerEvaluation;
 import edu.tcu.projectpulse.repo.NotificationRepository;
 import edu.tcu.projectpulse.repo.InstructorInvitationRepository;
 import edu.tcu.projectpulse.repo.RubricCriterionRepository;
@@ -1180,20 +1182,17 @@ public class ProjectPulseService {
         }
 
         // Check if email is already used by another user
-        Optional<UserAccount> existingUser = userRepo.findByEmailIgnoreCase(req.email().trim());
+        Optional<UserAccount> existingUser = userRepo.findByEmailIgnoreCase(req.getEmail().trim());
         if (existingUser.isPresent() && !existingUser.get().getId().equals(studentId)) {
             throw new ApiException("Email is already in use by another account");
         }
 
-        // Update student information
-        student.setFirstName(req.firstName().trim());
-        student.setLastName(req.lastName().trim());
-        student.setEmail(req.email().trim().toLowerCase());
-        
-        UserAccount savedStudent = userRepo.save(student);
+        student.setFirstName(req.getFirstName().trim());
+        student.setLastName(req.getLastName().trim());
+        student.setEmail(req.getEmail().trim());
 
+        UserAccount savedStudent = userRepo.save(student);
         return new ProfileUpdateResponse(
-                savedStudent.getId().toString(),
                 savedStudent.getFirstName(),
                 savedStudent.getLastName(),
                 savedStudent.getEmail(),
@@ -1228,12 +1227,12 @@ public class ProjectPulseService {
         WeeklyActivity activity = new WeeklyActivity();
         activity.setId(String.valueOf(System.currentTimeMillis())); // Using String ID for MongoDB consistency
         activity.setStudentId(studentId);
-        activity.setCategory(req.category());
-        activity.setDescription(req.description().trim());
-        activity.setPlannedHours(req.plannedHours());
-        activity.setActualHours(req.actualHours() != null ? req.actualHours() : 0.0);
-        activity.setStatus(req.status());
-        activity.setWeekId(req.weekId());
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
         activity.setCreatedAt(LocalDateTime.now());
         activity.setUpdatedAt(LocalDateTime.now());
 
@@ -1254,12 +1253,12 @@ public class ProjectPulseService {
             throw new ApiException("You can only update your own activities");
         }
 
-        activity.setCategory(req.category());
-        activity.setDescription(req.description().trim());
-        activity.setPlannedHours(req.plannedHours());
-        activity.setActualHours(req.actualHours() != null ? req.actualHours() : 0.0);
-        activity.setStatus(req.status());
-        activity.setWeekId(req.weekId());
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
         activity.setUpdatedAt(LocalDateTime.now());
 
         WeeklyActivity saved = weeklyActivityRepo.save(activity);
@@ -1378,5 +1377,84 @@ public class ProjectPulseService {
                 evaluation.getUpdatedAt(),
                 message
         );
+    }
+
+    // Peer Evaluation Report Methods (BR-5: Anonymous aggregated scores only)
+    
+    public PeerEvaluationReportResponse getPeerEvaluationReport(Long studentId, String weekId) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can view their peer evaluation reports");
+        }
+
+        // Get all evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekId(studentId, weekId);
+
+        if (evaluations.isEmpty()) {
+            return new PeerEvaluationReportResponse(
+                    studentId,
+                    weekId,
+                    Map.of(),
+                    List.of(),
+                    "No evaluations available for this week"
+            );
+        }
+
+        // BR-5 Enforcement: Calculate aggregated scores per criterion (anonymous)
+        Map<String, Double> averageScores = calculateAverageScores(evaluations);
+
+        // BR-5 Enforcement: Collect only public comments (anonymous)
+        List<String> publicComments = evaluations.stream()
+                .map(PeerEvaluation::getPublicComment)
+                .filter(comment -> comment != null && !comment.trim().isEmpty())
+                .map(String::trim)
+                .toList();
+
+        return new PeerEvaluationReportResponse(
+                studentId,
+                weekId,
+                averageScores,
+                publicComments,
+                "Peer evaluation report retrieved successfully"
+        );
+    }
+
+    private Map<String, Double> calculateAverageScores(List<PeerEvaluation> evaluations) {
+        Map<String, Double> averageScores = new HashMap<>();
+        Map<String, Integer> scoreCounts = new HashMap<>();
+        Map<String, Double> scoreSums = new HashMap<>();
+
+        // Aggregate scores across all evaluations
+        for (PeerEvaluation evaluation : evaluations) {
+            for (Map.Entry<String, Integer> entry : evaluation.getScores().entrySet()) {
+                String criterion = entry.getKey();
+                Integer score = entry.getValue();
+
+                scoreSums.put(criterion, scoreSums.getOrDefault(criterion, 0.0) + score);
+                scoreCounts.put(criterion, scoreCounts.getOrDefault(criterion, 0) + 1);
+            }
+        }
+
+        // Calculate averages
+        for (String criterion : scoreSums.keySet()) {
+            double sum = scoreSums.get(criterion);
+            int count = scoreCounts.get(criterion);
+            averageScores.put(criterion, sum / count);
+        }
+
+        return averageScores;
+    }
+
+    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
+        // Simple implementation - create notifications for instructors
+        // This is a placeholder for the actual notification logic
+        Set<Long> currentInstructorIds = team.getInstructorIds();
+        
+        // Notify new instructors
+        currentInstructorIds.stream()
+                .filter(instructorId -> !previousInstructorIds.contains(instructorId))
+                .forEach(instructorId -> {
+                    createNotification(instructorId, "You have been assigned to team: " + team.getName());
+                });
     }
 }

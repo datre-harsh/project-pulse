@@ -297,36 +297,15 @@ const weekOptions = [
 
 // Computed property for submit button validation
 const canSubmit = computed(() => {
-  console.log('canSubmit check:', {
-    selectedEvaluatee: selectedEvaluatee.value,
-    selectedWeekId: selectedWeekId.value,
-    rubricCriteriaLength: rubricCriteria.value.length,
-    evaluationScores: evaluationScores.value
-  })
-  
-  if (!selectedEvaluatee.value) {
-    console.log('Submit disabled: No evaluatee selected')
-    return false
-  }
-  if (!selectedWeekId.value) {
-    console.log('Submit disabled: No week selected')
-    return false
-  }
-  if (rubricCriteria.value.length === 0) {
-    console.log('Submit disabled: No rubric criteria')
-    return false
-  }
+  if (!selectedEvaluatee.value) return false
+  if (!selectedWeekId.value) return false
+  if (rubricCriteria.value.length === 0) return false
   
   // Check if all criteria have scores
-  const allScoresValid = rubricCriteria.value.every(criterion => {
+  return rubricCriteria.value.every(criterion => {
     const score = evaluationScores.value[criterion.id]
-    const isValid = score && score >= 1 && score <= 5
-    console.log(`Criterion ${criterion.id}: score=${score}, valid=${isValid}`)
-    return isValid
+    return score && score >= 1 && score <= 5
   })
-  
-  console.log('All scores valid:', allScoresValid)
-  return allScoresValid
 })
 
 // Load team members
@@ -335,10 +314,8 @@ const loadTeamMembers = async () => {
   try {
     // TODO: Get actual student ID from authentication
     const studentId = 1
-    const response = await axios.get(`/api/students/${studentId}`)
-    const studentData = response.data
     
-    // Mock team members for demo (replace with actual team data)
+    // Mock team members for testing (replace with actual team data)
     teamMembers.value = [
       { id: 2, name: 'Alice Johnson' },
       { id: 3, name: 'Bob Smith' },
@@ -359,37 +336,19 @@ const loadRubricCriteria = async () => {
   
   loading.value = true
   try {
-    // TODO: Get actual rubric ID from team/section
-    const rubricId = 1
-    
-    // Try to load from API, fall back to mock data
-    try {
-      const response = await axios.get(`/api/rubrics/${rubricId}`)
-      const rubricData = response.data
-      rubricCriteria.value = rubricData.criteria || []
-    } catch (apiError) {
-      console.log('API not available, using mock rubric data')
-      // Mock rubric criteria for testing
-      rubricCriteria.value = [
-        { id: 'participation', name: 'Participation', description: 'Active participation in team discussions and activities' },
-        { id: 'quality', name: 'Work Quality', description: 'Quality and completeness of assigned tasks' },
-        { id: 'communication', name: 'Communication', description: 'Clear and effective communication with team members' },
-        { id: 'timeliness', name: 'Timeliness', description: 'Meeting deadlines and timely completion of work' },
-        { id: 'collaboration', name: 'Collaboration', description: 'Ability to work effectively with team members' }
-      ]
-    }
+    // Mock rubric criteria for testing (replace with actual API call)
+    rubricCriteria.value = [
+      { id: 'teamwork', name: 'Teamwork', description: 'Ability to work effectively with team members' },
+      { id: 'coding', name: 'Coding Quality', description: 'Quality and technical excellence of code' },
+      { id: 'communication', name: 'Communication', description: 'Clear and effective communication' }
+    ]
     
     // Initialize scores for new criteria
-    console.log('Initializing scores for criteria:', rubricCriteria.value)
     rubricCriteria.value.forEach(criterion => {
       if (!evaluationScores.value[criterion.id]) {
         evaluationScores.value[criterion.id] = 3 // Default to middle score
-        console.log(`Initialized score for ${criterion.id}: 3`)
-      } else {
-        console.log(`Score already exists for ${criterion.id}: ${evaluationScores.value[criterion.id]}`)
       }
     })
-    console.log('Final evaluationScores:', evaluationScores.value)
   } catch (error) {
     console.error('Error loading rubric criteria:', error)
     errorMessage.value = 'Failed to load evaluation criteria'
@@ -443,7 +402,11 @@ const submitEvaluation = async () => {
       privateComment: privateComment.value.trim() || null
     }
     
-    await axios.post('/api/students/peer-evaluation', evaluationData)
+    console.log('Submitting evaluation data:', evaluationData)
+    
+    const response = await axios.post('/api/students/peer-evaluation', evaluationData)
+    
+    console.log('Submission successful:', response.data)
     
     confirmationDialog.value = false
     successMessage.value = 'Peer evaluation submitted successfully'
@@ -453,7 +416,11 @@ const submitEvaluation = async () => {
     resetForm()
   } catch (error) {
     console.error('Error submitting evaluation:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to submit evaluation'
+    console.error('Error response:', error.response)
+    console.error('Error status:', error.response?.status)
+    console.error('Error data:', error.response?.data)
+    
+    const errorMsg = error.response?.data?.message || error.message || 'Failed to submit evaluation'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {
