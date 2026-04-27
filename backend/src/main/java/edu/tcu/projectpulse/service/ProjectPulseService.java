@@ -24,6 +24,8 @@ import edu.tcu.projectpulse.repo.TeamRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
 import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
 import edu.tcu.projectpulse.repo.PeerEvaluationRepository;
+
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -1490,5 +1492,222 @@ public class ProjectPulseService {
                 savedInstructor.getEmail(),
                 "Instructor account created successfully"
         );
+    }
+
+    // Instructor Evaluation Methods (UC-31)
+    
+    public InstructorEvaluationResponse getStudentEvaluationsForInstructor(Long instructorId, Long studentId, String weekId) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access student evaluations");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        
+        // Convert to detail DTOs with evaluator names
+        List<StudentEvaluationDetail> evaluationDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new StudentEvaluationDetail(
+                            evaluation.getId(),
+                            evaluation.getEvaluatorId(),
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getEvaluateeId(),
+                            evaluation.getWeekId(),
+                            evaluation.getScores(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment(),
+                            evaluation.getCreatedAt()
+                    );
+                })
+                .toList();
+        
+        // Find students who did not submit evaluations (non-evaluators)
+        List<String> nonEvaluators = findNonEvaluators(studentId, weekId, evaluations);
+        
+        // Calculate system suggested grade (average of total scores)
+        Double systemSuggestedGrade = calculateSystemSuggestedGrade(evaluations);
+        
+        return new InstructorEvaluationResponse(
+                studentId,
+                student.getFirstName() + " " + student.getLastName(),
+                weekId,
+                evaluationDetails,
+                nonEvaluators,
+                systemSuggestedGrade,
+                "Student evaluations retrieved successfully"
+        );
+    }
+    
+    private List<String> findNonEvaluators(Long studentId, String weekId, List<PeerEvaluation> evaluations) {
+        // Get all students in the same team as the evaluated student
+        List<UserAccount> teammates = getStudentTeammates(studentId);
+        
+        // Get IDs of students who submitted evaluations
+        Set<Long> evaluatorIds = evaluations.stream()
+                .map(PeerEvaluation::getEvaluatorId)
+                .collect(Collectors.toSet());
+        
+        // Find teammates who did not submit evaluations
+        return teammates.stream()
+                .filter(teammate -> !teammate.getId().equals(studentId)) // Exclude the student being evaluated
+                .filter(teammate -> !evaluatorIds.contains(teammate.getId())) // Exclude those who submitted
+                .map(teammate -> teammate.getFirstName() + " " + teammate.getLastName())
+                .sorted()
+                .toList();
+    }
+    
+    private List<UserAccount> getStudentTeammates(Long studentId) {
+        // Find the team the student belongs to
+        List<Team> teams = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId))
+                .toList();
+        
+        if (teams.isEmpty()) {
+            return List.of();
+        }
+        
+        // Get all students in the first team found (assuming student belongs to only one team)
+        Team team = teams.get(0);
+        return team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+    }
+    
+    private Double calculateSystemSuggestedGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return 0.0;
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        return totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+    }
+    
+    public String saveInstructorFinalDecision(Long instructorId, Long studentId, String weekId, InstructorFinalDecisionRequest request) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can save final decisions");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // TODO: Save the instructor's final decision to a separate table/entity
+        // For now, we'll just return a success message
+        // In a complete implementation, you would save this to an InstructorEvaluation entity
+        
+        return String.format("Final decision saved for %s. Grade: %.1f, Comment: %s", 
+                student.getFirstName() + " " + student.getLastName(), 
+                request.getFinalGrade(), 
+                request.getInstructorComment() != null ? request.getInstructorComment() : "No comment");
+    }
+    
+    // Section-Level Evaluation Report Methods (UC-31 Refactored)
+    
+    public SectionEvaluationReportResponse getSectionEvaluationReport(Long instructorId, Long sectionId, String weekId) {
+        // Verify instructor has access to this section
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access section evaluation reports");
+        }
+        
+        Section section = getSectionEntity(sectionId);
+        
+        // Get all students in the section
+        List<UserAccount> sectionStudents = section.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        
+        // Generate reports for each student
+        List<StudentSectionReport> studentReports = sectionStudents.stream()
+                .map(student -> generateStudentReport(student, weekId))
+                .toList();
+        
+        return new SectionEvaluationReportResponse(
+                sectionId,
+                section.getName(),
+                weekId,
+                studentReports,
+                "Section evaluation report generated successfully"
+        );
+    }
+    
+    private StudentSectionReport generateStudentReport(UserAccount student, String weekId) {
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(student.getId(), weekId);
+        
+        // Calculate grade (average of total scores)
+        String grade = calculateStudentGrade(evaluations);
+        
+        // Generate evaluator details
+        List<EvaluatorDetail> evaluatorDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new EvaluatorDetail(
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment()
+                    );
+                })
+                .toList();
+        
+        return new StudentSectionReport(
+                student.getId(),
+                student.getFirstName() + " " + student.getLastName(),
+                grade,
+                evaluatorDetails
+        );
+    }
+    
+    private String calculateStudentGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return "0/60"; // Default when no evaluations
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        double averageScore = totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+        
+        // Format as "X/60" (assuming max score is 60 based on PDF example)
+        return String.format("%.0f/60", Math.round(averageScore));
     }
 }

@@ -193,6 +193,15 @@ public class ProjectPulseController {
         return service.registerInstructor(request);
     }
 
+    // Instructor Evaluation Endpoints (UC-31 Refactored)
+    
+    @GetMapping("/instructors/sections/{sectionId}/evaluations/{weekId}")
+    public SectionEvaluationReportResponse getSectionEvaluationReport(@PathVariable Long sectionId, @PathVariable String weekId) {
+        // TODO: Get instructor ID from authentication context (currently hardcoded for demo)
+        Long instructorId = 2L; // This should come from the authenticated user
+        return service.getSectionEvaluationReport(instructorId, sectionId, weekId);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);
