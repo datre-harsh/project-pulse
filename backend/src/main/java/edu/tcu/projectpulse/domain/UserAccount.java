@@ -26,4 +26,6 @@ public class UserAccount {
     private Role role;
 
     private boolean active = true;
+
+    private String deactivationReason;
 }

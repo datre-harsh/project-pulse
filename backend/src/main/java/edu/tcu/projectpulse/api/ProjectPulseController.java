@@ -41,6 +41,73 @@ public class ProjectPulseController {
         return service.getInstructorOptions();
     }
 
+    @GetMapping("/options/students")
+    public List<UserSummaryResponse> getStudentOptions() {
+        return service.getStudentOptions();
+    }
+
+    @GetMapping("/students")
+    public List<StudentSearchResponse> getStudents(
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String lastName,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String sectionName,
+            @RequestParam(required = false) String teamName,
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) Long teamId
+    ) {
+        return service.getStudents(firstName, lastName, email, sectionName, teamName, sectionId, teamId);
+    }
+
+    @GetMapping("/instructors")
+    public List<InstructorSearchResponse> getInstructors(
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String lastName,
+            @RequestParam(required = false) String teamName,
+            @RequestParam(required = false) String status
+    ) {
+        return service.getInstructors(firstName, lastName, teamName, status);
+    }
+
+    @GetMapping("/instructors/{id}")
+    public InstructorDetailResponse getInstructor(@PathVariable Long id) {
+        return service.getInstructor(id);
+    }
+
+    @PutMapping("/instructors/{id}/deactivate")
+    public InstructorDetailResponse deactivateInstructor(@PathVariable Long id, @Valid @RequestBody InstructorDeactivationRequest req) {
+        return service.deactivateInstructor(id, req);
+    }
+
+    @GetMapping("/students/{id}")
+    public StudentDetailResponse getStudent(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) Long teamId
+    ) {
+        return service.getStudent(id, sectionId, teamId);
+    }
+
+    @DeleteMapping("/students/{id}")
+    public void deleteStudent(@PathVariable Long id) {
+        service.deleteStudent(id);
+    }
+
+    @GetMapping("/instructor-invitations")
+    public List<InstructorInvitationResponse> getInstructorInvitations() {
+        return service.getInstructorInvitations();
+    }
+
+    @PostMapping("/instructor-invitations")
+    public List<InstructorInvitationResponse> inviteInstructors(@Valid @RequestBody InstructorInvitationRequest req) {
+        return service.inviteInstructors(req);
+    }
+
+    @GetMapping("/users/{id}/notifications")
+    public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
+        return service.getUserNotifications(id);
+    }
+
     @GetMapping("/sections")
     public List<SectionSummaryResponse> getSections(@RequestParam(required = false) String name) {
         return service.getSections(name);
@@ -94,6 +161,21 @@ public class ProjectPulseController {
     @PutMapping("/teams/{id}")
     public TeamDetailResponse updateTeam(@PathVariable Long id, @Valid @RequestBody TeamRequest req) {
         return service.updateTeam(id, req);
+    }
+
+    @DeleteMapping("/teams/{id}")
+    public void deleteTeam(@PathVariable Long id) {
+        service.deleteTeam(id);
+    }
+
+    @DeleteMapping("/teams/{teamId}/students/{studentId}")
+    public TeamDetailResponse removeStudentFromTeam(@PathVariable Long teamId, @PathVariable Long studentId) {
+        return service.removeStudentFromTeam(teamId, studentId);
+    }
+
+    @DeleteMapping("/teams/{teamId}/instructors/{instructorId}")
+    public TeamDetailResponse removeInstructorFromTeam(@PathVariable Long teamId, @PathVariable Long instructorId) {
+        return service.removeInstructorFromTeam(teamId, instructorId);
     }
 
     @GetMapping("/rubric")

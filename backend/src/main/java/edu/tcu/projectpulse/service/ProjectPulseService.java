@@ -3,6 +3,8 @@ package edu.tcu.projectpulse.service;
 import edu.tcu.projectpulse.api.ApiException;
 import edu.tcu.projectpulse.config.SequenceGeneratorService;
 import edu.tcu.projectpulse.domain.Role;
+import edu.tcu.projectpulse.domain.Notification;
+import edu.tcu.projectpulse.domain.InstructorInvitation;
 import edu.tcu.projectpulse.domain.Rubric;
 import edu.tcu.projectpulse.domain.RubricCriterion;
 import edu.tcu.projectpulse.domain.Section;
@@ -10,6 +12,8 @@ import edu.tcu.projectpulse.domain.StudentInvitation;
 import edu.tcu.projectpulse.domain.Team;
 import edu.tcu.projectpulse.domain.UserAccount;
 import edu.tcu.projectpulse.dto.*;
+import edu.tcu.projectpulse.repo.NotificationRepository;
+import edu.tcu.projectpulse.repo.InstructorInvitationRepository;
 import edu.tcu.projectpulse.repo.RubricCriterionRepository;
 import edu.tcu.projectpulse.repo.RubricRepository;
 import edu.tcu.projectpulse.repo.SectionRepository;
@@ -38,6 +42,8 @@ public class ProjectPulseService {
     private final UserAccountRepository userRepo;
     private final SectionRepository sectionRepo;
     private final TeamRepository teamRepo;
+    private final NotificationRepository notificationRepo;
+    private final InstructorInvitationRepository instructorInvitationRepo;
     private final RubricRepository rubricRepo;
     private final RubricCriterionRepository rubricRepoCriteria;
     private final StudentInvitationRepository invitationRepo;
@@ -88,6 +94,280 @@ public class ProjectPulseService {
         return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
                 .filter(UserAccount::isActive)
                 .map(this::toUserSummary)
+                .toList();
+    }
+
+    public List<UserSummaryResponse> getStudentOptions() {
+        return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.STUDENT).stream()
+                .filter(UserAccount::isActive)
+                .map(this::toUserSummary)
+                .toList();
+    }
+
+    public List<StudentSearchResponse> getStudents(
+            String firstName,
+            String lastName,
+            String email,
+            String sectionName,
+            String teamName,
+            Long sectionId,
+            Long teamId
+    ) {
+        List<UserAccount> students = userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.STUDENT).stream()
+                .filter(UserAccount::isActive)
+                .filter(student -> matchesValue(student.getFirstName(), firstName))
+                .filter(student -> matchesValue(student.getLastName(), lastName))
+                .filter(student -> matchesValue(student.getEmail(), email))
+                .toList();
+
+        List<StudentSearchResponse> matches = new ArrayList<>();
+        for (UserAccount student : students) {
+            List<Section> memberships = sectionRepo.findAll().stream()
+                    .filter(section -> section.getStudentIds().contains(student.getId()))
+                    .toList();
+
+            if (memberships.isEmpty()) {
+                if (sectionId == null && isBlank(sectionName) && teamId == null && isBlank(teamName)) {
+                    matches.add(toStudentSearchResponse(student, null, null));
+                }
+                continue;
+            }
+
+            for (Section section : memberships) {
+                if (!matchesSectionFilter(section, sectionId, sectionName)) {
+                    continue;
+                }
+
+                Team team = teamRepo.findBySectionId(section.getId()).stream()
+                        .filter(candidate -> candidate.getStudentIds().contains(student.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (!matchesTeamFilter(team, teamId, teamName)) {
+                    continue;
+                }
+
+                matches.add(toStudentSearchResponse(student, section, team));
+            }
+        }
+
+        return matches.stream()
+                .sorted(Comparator.comparing(
+                                StudentSearchResponse::sectionName,
+                                Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                        ).reversed()
+                        .thenComparing(StudentSearchResponse::lastName, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(StudentSearchResponse::firstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    public List<InstructorSearchResponse> getInstructors(
+            String firstName,
+            String lastName,
+            String teamName,
+            String status
+    ) {
+        List<UserAccount> instructors = userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
+                .filter(instructor -> matchesValue(instructor.getFirstName(), firstName))
+                .filter(instructor -> matchesValue(instructor.getLastName(), lastName))
+                .filter(instructor -> matchesInstructorStatus(instructor, status))
+                .toList();
+
+        List<InstructorSearchResponse> matches = new ArrayList<>();
+        for (UserAccount instructor : instructors) {
+            List<Team> memberships = teamRepo.findAll().stream()
+                    .filter(team -> team.getInstructorIds().contains(instructor.getId()))
+                    .toList();
+
+            if (memberships.isEmpty()) {
+                if (isBlank(teamName)) {
+                    matches.add(toInstructorSearchResponse(instructor, null, null));
+                }
+                continue;
+            }
+
+            for (Team team : memberships) {
+                if (!matchesValue(team.getName(), teamName)) {
+                    continue;
+                }
+
+                Section section = getSectionEntity(team.getSectionId());
+                matches.add(toInstructorSearchResponse(instructor, section, team));
+            }
+        }
+
+        return matches.stream()
+                .sorted(Comparator.comparing(
+                                InstructorSearchResponse::academicYear,
+                                Comparator.nullsLast(Integer::compareTo)
+                        ).reversed()
+                        .thenComparing(InstructorSearchResponse::lastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(InstructorSearchResponse::firstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    public StudentDetailResponse getStudent(Long id, Long sectionId, Long teamId) {
+        UserAccount student = getUser(id);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be viewed through this endpoint");
+        }
+
+        Section section = null;
+        if (sectionId != null) {
+            section = getSectionEntity(sectionId);
+            if (!section.getStudentIds().contains(id)) {
+                throw new ApiException("Student is not part of the selected section");
+            }
+        } else {
+            section = sectionRepo.findAll().stream()
+                    .filter(candidate -> candidate.getStudentIds().contains(id))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        Team team = null;
+        if (teamId != null) {
+            team = getTeamEntity(teamId);
+            if (!team.getStudentIds().contains(id)) {
+                throw new ApiException("Student is not part of the selected team");
+            }
+            if (section != null && !Objects.equals(team.getSectionId(), section.getId())) {
+                throw new ApiException("Selected team does not belong to the selected section");
+            }
+            if (section == null) {
+                section = getSectionEntity(team.getSectionId());
+            }
+        } else if (section != null) {
+            Team scopedTeam = teamRepo.findBySectionId(section.getId()).stream()
+                    .filter(candidate -> candidate.getStudentIds().contains(id))
+                    .findFirst()
+                    .orElse(null);
+            team = scopedTeam;
+        }
+
+        return new StudentDetailResponse(
+                student.getId(),
+                student.getFirstName(),
+                student.getLastName(),
+                section == null ? "Not assigned to a section" : section.getName(),
+                team == null ? "Not assigned to a team" : team.getName(),
+                List.of("No peer evaluations are available in this version of Project Pulse yet."),
+                List.of("No WARs are available in this version of Project Pulse yet.")
+        );
+    }
+
+    public InstructorDetailResponse getInstructor(Long id) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be viewed through this endpoint");
+        }
+
+        List<InstructorSectionTeamsResponse> supervisedTeams = teamRepo.findAll().stream()
+                .filter(team -> team.getInstructorIds().contains(id))
+                .collect(Collectors.groupingBy(
+                        Team::getSectionId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ))
+                .entrySet().stream()
+                .map(entry -> {
+                    Section section = getSectionEntity(entry.getKey());
+                    List<String> teamNames = entry.getValue().stream()
+                            .map(Team::getName)
+                            .sorted(String.CASE_INSENSITIVE_ORDER)
+                            .toList();
+                    return new InstructorSectionTeamsResponse(section.getId(), section.getName(), teamNames);
+                })
+                .sorted(Comparator.comparing(InstructorSectionTeamsResponse::sectionName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        return new InstructorDetailResponse(
+                instructor.getId(),
+                instructor.getFirstName(),
+                instructor.getLastName(),
+                instructor.isActive() ? "Active" : "Deactivated",
+                supervisedTeams
+        );
+    }
+
+    public InstructorDetailResponse deactivateInstructor(Long id, InstructorDeactivationRequest req) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be deactivated through this endpoint");
+        }
+        if (!instructor.isActive()) {
+            throw new ApiException("Instructor is already deactivated");
+        }
+
+        // Ralph: Keep the account record in place for future recovery while still recording why access was removed.
+        instructor.setActive(false);
+        instructor.setDeactivationReason(req.reason().trim());
+        userRepo.save(instructor);
+        return getInstructor(id);
+    }
+
+    public void deleteStudent(Long id) {
+        UserAccount student = getUser(id);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be deleted through this endpoint");
+        }
+
+        // Ralph: Remove the student from every section and team first so no dangling membership IDs remain.
+        List<Section> sections = sectionRepo.findAll().stream()
+                .filter(section -> section.getStudentIds().contains(id))
+                .toList();
+        for (Section section : sections) {
+            section.getStudentIds().remove(id);
+            sectionRepo.save(section);
+        }
+
+        List<Team> teams = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(id))
+                .toList();
+        for (Team team : teams) {
+            team.getStudentIds().remove(id);
+            teamRepo.save(team);
+        }
+
+        notificationRepo.deleteAll(notificationRepo.findByUserIdOrderByCreatedAtDesc(id));
+        userRepo.delete(student);
+    }
+
+    public List<InstructorInvitationResponse> getInstructorInvitations() {
+        return instructorInvitationRepo.findByAcceptedFalseOrderBySentAtDesc().stream()
+                .map(this::toInstructorInvitation)
+                .toList();
+    }
+
+    public List<InstructorInvitationResponse> inviteInstructors(InstructorInvitationRequest req) {
+        List<String> emails = parseStrictSemicolonEmails(req.emails());
+
+        String subject = req.subject() == null || req.subject().isBlank()
+                ? "Welcome to The Peer Evaluation Tool - Complete Your Registration"
+                : req.subject().trim();
+
+        List<InstructorInvitationResponse> responses = new ArrayList<>();
+        for (String email : emails) {
+            String token = UUID.randomUUID().toString().replace("-", "");
+            String message = buildInstructorInvitationMessage(token, req.message());
+
+            InstructorInvitation invitation = new InstructorInvitation();
+            invitation.setId(sequenceGeneratorService.generateSequence(InstructorInvitation.SEQUENCE_NAME));
+            invitation.setEmail(email);
+            invitation.setToken(token);
+            invitation.setSubject(subject);
+            invitation.setMessage(message);
+            invitation.setSentAt(LocalDateTime.now());
+            InstructorInvitation saved = instructorInvitationRepo.save(invitation);
+            responses.add(toInstructorInvitation(saved));
+        }
+        return responses;
+    }
+
+    public List<NotificationResponse> getUserNotifications(Long id) {
+        getUser(id);
+        return notificationRepo.findByUserIdOrderByCreatedAtDesc(id).stream()
+                .map(this::toNotificationResponse)
                 .toList();
     }
 
@@ -181,22 +461,63 @@ public class ProjectPulseService {
         applyTeam(team, req);
         Team saved = teamRepo.save(team);
         syncSectionMemberships(saved);
+        notifyAssignedInstructors(saved, Set.of());
         return toTeamDetail(saved);
     }
 
     public TeamDetailResponse updateTeam(Long id, TeamRequest req) {
         validateTeamRequest(req, id);
         Team team = getTeamEntity(id);
+        Set<Long> previousInstructorIds = new HashSet<>(team.getInstructorIds());
         applyTeam(team, req);
         Team saved = teamRepo.save(team);
         syncSectionMemberships(saved);
+        notifyAssignedInstructors(saved, previousInstructorIds);
+        return toTeamDetail(saved);
+    }
+
+    public TeamDetailResponse removeStudentFromTeam(Long teamId, Long studentId) {
+        Team team = getTeamEntity(teamId);
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be removed from a team");
+        }
+        if (!team.getStudentIds().contains(studentId)) {
+            throw new ApiException("Student is not assigned to this team");
+        }
+
+        team.getStudentIds().remove(studentId);
+        Team saved = teamRepo.save(team);
+        // Ralph: Persist the notification so the admin can verify the student was informed.
+        createNotification(studentId, "You have been removed from team " + team.getName() + ".");
+        return toTeamDetail(saved);
+    }
+
+    public TeamDetailResponse removeInstructorFromTeam(Long teamId, Long instructorId) {
+        Team team = getTeamEntity(teamId);
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be removed from a team");
+        }
+        if (!team.getInstructorIds().contains(instructorId)) {
+            throw new ApiException("Instructor is not assigned to this team");
+        }
+
+        team.getInstructorIds().remove(instructorId);
+        validateBr1(team);
+        Team saved = teamRepo.save(team);
+        // Ralph: Persist the removal notice so the admin can verify the instructor was informed.
+        createNotification(instructorId, "You have been removed from team " + team.getName() + ".");
         return toTeamDetail(saved);
     }
 
     public void deleteTeam(Long id) {
         Team team = getTeamEntity(id);
-        if (!team.getInstructorIds().isEmpty()) {
-            throw new ApiException("Cannot delete team with instructors assigned. Remove instructors first.");
+        for (Long studentId : team.getStudentIds()) {
+            createNotification(studentId, "Team " + team.getName() + " was deleted.");
+        }
+        for (Long instructorId : team.getInstructorIds()) {
+            createNotification(instructorId, "Team " + team.getName() + " was deleted.");
         }
         teamRepo.delete(team);
     }
@@ -346,6 +667,13 @@ public class ProjectPulseService {
             }
         }
 
+        Set<Long> sectionInstructors = section.getInstructorIds() == null ? Set.of() : section.getInstructorIds();
+        for (Long instructorId : req.instructorIds() == null ? Set.<Long>of() : req.instructorIds()) {
+            if (!sectionInstructors.contains(instructorId)) {
+                throw new ApiException("Instructor " + instructorId + " is not part of the selected section");
+            }
+        }
+
         Team probe = new Team();
         probe.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
         validateBr1(probe);
@@ -403,6 +731,33 @@ public class ProjectPulseService {
         return parsed;
     }
 
+    private List<String> parseStrictSemicolonEmails(String emails) {
+        String normalized = emails == null ? "" : emails.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException("At least one instructor email is required");
+        }
+        if (normalized.endsWith(";")) {
+            throw new ApiException("Instructor emails cannot end with a semicolon");
+        }
+        if (!normalized.contains(";") && normalized.contains(" ")) {
+            throw new ApiException("Instructor emails must be separated by semicolons");
+        }
+
+        List<String> parsed = Arrays.stream(normalized.split(";"))
+                .map(String::trim)
+                .toList();
+        for (int index = 0; index < parsed.size(); index++) {
+            String email = parsed.get(index);
+            if (email.isBlank()) {
+                throw new ApiException("Instructor email " + (index + 1) + " is empty");
+            }
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new ApiException("Invalid instructor email format: " + email);
+            }
+        }
+        return parsed;
+    }
+
     private String buildInvitationMessage(String email, String token, String customMessage) {
         if (customMessage != null && !customMessage.isBlank()) {
             return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
@@ -411,6 +766,19 @@ public class ProjectPulseService {
                 + "To complete registration, use this link:\n"
                 + buildRegistrationLink(token) + "\n\n"
                 + "If you need help, contact your course admin.").trim();
+    }
+
+    private String buildInstructorInvitationMessage(String token, String customMessage) {
+        if (customMessage != null && !customMessage.isBlank()) {
+            return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
+        }
+        return ("Hello,\n\n"
+                + "[Name of the Admin] has invited you to join The Peer Evaluation Tool. To complete your registration, please use the link below:\n\n"
+                + buildRegistrationLink(token) + "\n\n"
+                + "If you have any questions or need assistance, feel free to contact [Admin's email] or our team directly.\n\n"
+                + "Please note: This email is not monitored, so do not reply directly to this message.\n\n"
+                + "Best regards,\n"
+                + "Peer Evaluation Tool Team").trim();
     }
 
     private String buildRegistrationLink(String token) {
@@ -429,6 +797,43 @@ public class ProjectPulseService {
         return teamName == null
                 || teamName.isBlank()
                 || team.getName().toLowerCase(Locale.ROOT).contains(teamName.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesValue(String actual, String expected) {
+        return expected == null
+                || expected.isBlank()
+                || (actual != null && actual.toLowerCase(Locale.ROOT).contains(expected.trim().toLowerCase(Locale.ROOT)));
+    }
+
+    private boolean matchesSectionFilter(Section section, Long sectionId, String sectionName) {
+        return (sectionId == null || Objects.equals(section.getId(), sectionId))
+                && matchesValue(section.getName(), sectionName);
+    }
+
+    private boolean matchesTeamFilter(Team team, Long teamId, String teamName) {
+        if (teamId != null && (team == null || !Objects.equals(team.getId(), teamId))) {
+            return false;
+        }
+        if (!isBlank(teamName) && (team == null || !matchesValue(team.getName(), teamName))) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean matchesInstructorStatus(UserAccount instructor, String status) {
+        if (isBlank(status)) {
+            return true;
+        }
+
+        return switch (status.trim().toUpperCase(Locale.ROOT)) {
+            case "ACTIVE" -> instructor.isActive();
+            case "DEACTIVATED" -> !instructor.isActive();
+            default -> throw new ApiException("Status must be ACTIVE or DEACTIVATED");
+        };
     }
 
     private void syncSectionMemberships(Team team) {
@@ -536,6 +941,20 @@ public class ProjectPulseService {
                 .map(this::toUserSummary)
                 .toList();
 
+        List<UserSummaryResponse> sectionStudents = section.getStudentIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
+        List<UserSummaryResponse> sectionInstructors = section.getInstructorIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
         List<StudentInvitationResponse> invitations = invitationRepo.findBySectionIdAndAcceptedFalseOrderBySentAtDesc(section.getId())
                 .stream()
                 .map(this::toStudentInvitation)
@@ -549,6 +968,8 @@ public class ProjectPulseService {
                 toRubricDetail(getRubricEntity(section.getRubricId())),
                 getActiveWeekNumbers(section),
                 new TreeSet<>(section.getInactiveWeekNumbers()),
+                sectionStudents,
+                sectionInstructors,
                 teams.stream().map(this::toTeamSummary).toList(),
                 unassignedStudents,
                 unassignedInstructors,
@@ -607,10 +1028,57 @@ public class ProjectPulseService {
         );
     }
 
+    private StudentSearchResponse toStudentSearchResponse(UserAccount student, Section section, Team team) {
+        return new StudentSearchResponse(
+                student.getId(),
+                student.getFirstName(),
+                student.getLastName(),
+                student.getEmail(),
+                section == null ? null : section.getId(),
+                section == null ? null : section.getName(),
+                team == null ? null : team.getId(),
+                team == null ? null : team.getName()
+        );
+    }
+
+    private InstructorSearchResponse toInstructorSearchResponse(UserAccount instructor, Section section, Team team) {
+        return new InstructorSearchResponse(
+                instructor.getId(),
+                instructor.getFirstName(),
+                instructor.getLastName(),
+                instructor.getEmail(),
+                section == null ? null : section.getStartDate().getYear(),
+                section == null ? null : section.getId(),
+                section == null ? null : section.getName(),
+                team == null ? null : team.getId(),
+                team == null ? null : team.getName(),
+                instructor.isActive() ? "Active" : "Deactivated"
+        );
+    }
+
     private StudentInvitationResponse toStudentInvitation(StudentInvitation invitation) {
         return new StudentInvitationResponse(
                 invitation.getId(),
                 invitation.getSectionId(),
+                invitation.getEmail(),
+                invitation.getSubject(),
+                invitation.getSentAt(),
+                invitation.isAccepted()
+        );
+    }
+
+    private NotificationResponse toNotificationResponse(Notification notification) {
+        return new NotificationResponse(
+                notification.getId(),
+                notification.getUserId(),
+                notification.getMessage(),
+                notification.getCreatedAt()
+        );
+    }
+
+    private InstructorInvitationResponse toInstructorInvitation(InstructorInvitation invitation) {
+        return new InstructorInvitationResponse(
+                invitation.getId(),
                 invitation.getEmail(),
                 invitation.getSubject(),
                 invitation.getSentAt(),
@@ -637,5 +1105,22 @@ public class ProjectPulseService {
 
     private String fullName(UserAccount user) {
         return user.getFirstName() + " " + user.getLastName();
+    }
+
+    private void createNotification(Long userId, String message) {
+        Notification notification = new Notification();
+        notification.setId(sequenceGeneratorService.generateSequence(Notification.SEQUENCE_NAME));
+        notification.setUserId(userId);
+        notification.setMessage(message);
+        notification.setCreatedAt(LocalDateTime.now());
+        notificationRepo.save(notification);
+    }
+
+    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
+        for (Long instructorId : team.getInstructorIds()) {
+            if (!previousInstructorIds.contains(instructorId)) {
+                createNotification(instructorId, "You have been assigned to team " + team.getName() + ".");
+            }
+        }
     }
 }

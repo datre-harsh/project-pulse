@@ -9,6 +9,8 @@
         <v-list-item to="/" title="Dashboard" prepend-icon="mdi-view-dashboard"></v-list-item>
         <v-list-item to="/sections" title="Sections" prepend-icon="mdi-school"></v-list-item>
         <v-list-item to="/teams" title="Teams" prepend-icon="mdi-account-multiple"></v-list-item>
+        <v-list-item to="/students" title="Students" prepend-icon="mdi-account-search"></v-list-item>
+        <v-list-item to="/instructors" title="Instructors" prepend-icon="mdi-account-tie"></v-list-item>
         <v-list-item to="/rubric" title="Rubric" prepend-icon="mdi-clipboard-text"></v-list-item>
       </v-list>
     </v-navigation-drawer>
