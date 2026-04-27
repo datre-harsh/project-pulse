@@ -186,6 +186,13 @@ public class ProjectPulseController {
         return service.getPeerEvaluationReport(studentId, weekId);
     }
 
+    // Instructor Registration Endpoints (UC-30)
+    
+    @PostMapping("/instructors/register")
+    public InstructorRegistrationResponse registerInstructor(@Valid @RequestBody InstructorRegistrationRequest request) {
+        return service.registerInstructor(request);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

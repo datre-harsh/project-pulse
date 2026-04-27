@@ -1457,4 +1457,38 @@ public class ProjectPulseService {
                     createNotification(instructorId, "You have been assigned to team: " + team.getName());
                 });
     }
+
+    // Instructor Registration Methods (UC-30)
+    
+    public InstructorRegistrationResponse registerInstructor(InstructorRegistrationRequest request) {
+        // Mock invitation token verification (replace with actual logic from UC-18 when ready)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+        
+        // Extension 2a: Check if instructor already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("Account already set up");
+        }
+        
+        // Create new instructor account
+        UserAccount instructor = new UserAccount();
+        instructor.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        instructor.setFirstName(request.getFirstName().trim());
+        instructor.setLastName(request.getLastName().trim());
+        instructor.setEmail(request.getEmail().trim().toLowerCase());
+        instructor.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt encryption
+        instructor.setRole(Role.INSTRUCTOR);
+        instructor.setActive(true);
+
+        UserAccount savedInstructor = userRepo.save(instructor);
+
+        return new InstructorRegistrationResponse(
+                savedInstructor.getId(),
+                savedInstructor.getFirstName(),
+                savedInstructor.getLastName(),
+                savedInstructor.getEmail(),
+                "Instructor account created successfully"
+        );
+    }
 }
