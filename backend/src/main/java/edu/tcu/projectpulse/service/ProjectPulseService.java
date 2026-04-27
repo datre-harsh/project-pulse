@@ -1169,11 +1169,31 @@ public class ProjectPulseService {
         );
     }
 
-    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
-        for (Long instructorId : team.getInstructorIds()) {
-            if (!previousInstructorIds.contains(instructorId)) {
-                createNotification(instructorId, "You have been assigned to team " + team.getName() + ".");
-            }
+    public ProfileUpdateResponse updateStudentProfile(Long studentId, ProfileUpdateRequest req) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their profile through this endpoint");
         }
+
+        // Check if email is already used by another user
+        Optional<UserAccount> existingUser = userRepo.findByEmailIgnoreCase(req.email().trim());
+        if (existingUser.isPresent() && !existingUser.get().getId().equals(studentId)) {
+            throw new ApiException("Email is already in use by another account");
+        }
+
+        // Update student information
+        student.setFirstName(req.firstName().trim());
+        student.setLastName(req.lastName().trim());
+        student.setEmail(req.email().trim().toLowerCase());
+        
+        UserAccount savedStudent = userRepo.save(student);
+
+        return new ProfileUpdateResponse(
+                savedStudent.getId().toString(),
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Profile updated successfully"
+        );
     }
 }

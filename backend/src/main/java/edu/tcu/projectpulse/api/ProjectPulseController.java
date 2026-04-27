@@ -113,6 +113,30 @@ public class ProjectPulseController {
         return service.registerStudent(req);
     }
 
+    @GetMapping("/students/profile")
+    public ProfileUpdateResponse getStudentProfile() {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        UserAccount student = service.getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can access their profile through this endpoint");
+        }
+        return new ProfileUpdateResponse(
+                student.getId().toString(),
+                student.getFirstName(),
+                student.getLastName(),
+                student.getEmail(),
+                "Profile loaded successfully"
+        );
+    }
+
+    @PutMapping("/students/profile")
+    public ProfileUpdateResponse updateStudentProfile(@Valid @RequestBody ProfileUpdateRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        return service.updateStudentProfile(studentId, req);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

@@ -12,6 +12,7 @@ import TeamsPage from './pages/TeamsPage.vue'
 import RubricPage from './pages/RubricPage.vue'
 import StudentsPage from './pages/StudentsPage.vue'
 import InstructorsPage from './pages/InstructorsPage.vue'
+import ProfilePage from './pages/ProfilePage.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
@@ -19,7 +20,8 @@ const routes = [
   { path: '/teams', component: TeamsPage },
   { path: '/students', component: StudentsPage },
   { path: '/instructors', component: InstructorsPage },
-  { path: '/rubric', component: RubricPage }
+  { path: '/rubric', component: RubricPage },
+  { path: '/profile', component: ProfilePage }
 ]
 
 const router = createRouter({

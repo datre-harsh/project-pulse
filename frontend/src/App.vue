@@ -12,6 +12,8 @@
         <v-list-item to="/students" title="Students" prepend-icon="mdi-account-search"></v-list-item>
         <v-list-item to="/instructors" title="Instructors" prepend-icon="mdi-account-tie"></v-list-item>
         <v-list-item to="/rubric" title="Rubric" prepend-icon="mdi-clipboard-text"></v-list-item>
+        <v-divider class="my-2"></v-divider>
+        <v-list-item to="/profile" title="Profile" prepend-icon="mdi-account-circle"></v-list-item>
       </v-list>
     </v-navigation-drawer>
 
