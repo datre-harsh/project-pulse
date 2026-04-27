@@ -1780,4 +1780,98 @@ public class ProjectPulseService {
         // Mock data for testing as specified
         return List.of("Bob Lazy");
     }
+    
+    // Student Peer Evaluation Report Methods (UC-33)
+    
+    public List<WeeklyStudentReport> getStudentPeerEvaluationReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing (exact structure from JSON example)
+        return generateMockStudentPeerEvalReport();
+    }
+    
+    private List<WeeklyStudentReport> generateMockStudentPeerEvalReport() {
+        // Mock data for John Doe as specified
+        // Week 1 (02-12-2024): Grade 54/60, Evaluators: Tim Smith, Lily Fisher
+        List<StudentEvaluation> week1Evaluations = List.of(
+                new StudentEvaluation(
+                    "Tim Smith", 
+                    "Good work on the project implementation.", 
+                    "John is doing well but needs to improve documentation."
+                ),
+                new StudentEvaluation(
+                    "Lily Fisher", 
+                    "Need to work harder on testing.", 
+                    "Dr. Wei, I need to talk more about John's code quality."
+                )
+        );
+        
+        // Week 2 (02-19-2024): Grade 55/60, Evaluator: Bob Johnson
+        List<StudentEvaluation> week2Evaluations = List.of(
+                new StudentEvaluation(
+                    "Bob Johnson", 
+                    "Excellent progress this week.", 
+                    "John has shown significant improvement in collaboration."
+                )
+        );
+        
+        return List.of(
+                new WeeklyStudentReport(
+                    "02-12-2024 - 02-18-2024",
+                    "54/60",
+                    week1Evaluations
+                ),
+                new WeeklyStudentReport(
+                    "02-19-2024 - 02-25-2024",
+                    "55/60",
+                    week2Evaluations
+                )
+        );
+    }
+    
+    // Student WAR Report Methods (UC-34)
+    
+    public List<WeeklyStudentWARReport> getStudentWARReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing
+        return generateMockStudentWARReport();
+    }
+    
+    private List<WeeklyStudentWARReport> generateMockStudentWARReport() {
+        // Mock data for UC-34 - 2 different weeks with grouped header rows
+        
+        // Week 1 activities
+        List<ActivityDetail> week1Activities = List.of(
+                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", "8", "10", "Completed"),
+                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", "3", "2", "Completed"),
+                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", "4", "4", "Completed")
+        );
+        
+        // Week 2 activities
+        List<ActivityDetail> week2Activities = List.of(
+                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", "6", "8", "Completed"),
+                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", "2", "2", "Completed"),
+                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", "3", "3", "In Progress")
+        );
+        
+        return List.of(
+                new WeeklyStudentWARReport(
+                    "02-12-2024 - 02-18-2024",
+                    week1Activities
+                ),
+                new WeeklyStudentWARReport(
+                    "02-19-2024 - 02-25-2024",
+                    week2Activities
+                )
+        );
+    }
 }

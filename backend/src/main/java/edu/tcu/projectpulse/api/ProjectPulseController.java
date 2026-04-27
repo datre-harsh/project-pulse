@@ -209,6 +209,26 @@ public class ProjectPulseController {
         return service.getTeamWARReport(teamId, weekId);
     }
 
+    // Student Peer Evaluation Report Endpoints (UC-33)
+    
+    @GetMapping("/students/{studentId}/peer-evaluation-report")
+    public List<WeeklyStudentReport> getStudentPeerEvaluationReport(
+            @PathVariable Long studentId, 
+            @RequestParam String startWeekId, 
+            @RequestParam String endWeekId) {
+        return service.getStudentPeerEvaluationReport(studentId, startWeekId, endWeekId);
+    }
+
+    // Student WAR Report Endpoints (UC-34)
+    
+    @GetMapping("/students/{studentId}/war-report")
+    public List<WeeklyStudentWARReport> getStudentWARReport(
+            @PathVariable Long studentId, 
+            @RequestParam String startWeekId, 
+            @RequestParam String endWeekId) {
+        return service.getStudentWARReport(studentId, startWeekId, endWeekId);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);
