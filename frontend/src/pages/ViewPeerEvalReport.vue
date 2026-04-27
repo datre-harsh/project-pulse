@@ -138,7 +138,6 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
 
 // Reactive data
 const loading = ref(false)
@@ -275,12 +274,12 @@ const loadEvaluationReport = async () => {
     
     // TODO: Replace with actual API call when ready
     // const studentId = 1
-    // const response = await axios.get(`/api/students/peer-evaluations/report/${selectedWeekId.value}`)
+    // const response = await api.get(`/students/peer-evaluations/report/${selectedWeekId.value}`)
     // evaluationReport.value = response.data
     
   } catch (error) {
     console.error('Error loading evaluation report:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to load evaluation report'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to load evaluation report'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {

@@ -200,7 +200,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 
 // Reactive data
 const isEditing = ref(false)
@@ -230,7 +230,7 @@ const editedProfile = ref({
 const loadProfile = async () => {
   try {
     // Use the new GET endpoint to load current student profile
-    const response = await axios.get('/api/students/profile')
+    const response = await api.get('/students/profile')
     const profileData = response.data
     
     currentProfile.value = {
@@ -279,7 +279,7 @@ const saveProfile = async () => {
     // TODO: Get actual student ID from authentication
     const studentId = 1
     
-    const response = await axios.put('/api/students/profile', {
+    const response = await api.put('/students/profile', {
       firstName: editedProfile.value.firstName,
       lastName: editedProfile.value.lastName,
       email: editedProfile.value.email
@@ -301,7 +301,7 @@ const saveProfile = async () => {
     
   } catch (error) {
     console.error('Error saving profile:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to update profile'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update profile'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {

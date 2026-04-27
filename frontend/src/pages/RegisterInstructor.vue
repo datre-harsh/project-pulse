@@ -163,7 +163,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 
 const router = useRouter()
 const route = useRoute()
@@ -233,7 +233,7 @@ const submitRegistration = async () => {
       invitationToken: invitationToken.value
     }
     
-    const response = await axios.post('/api/instructors/register', registrationData)
+    const response = await api.post('/instructors/register', registrationData)
     
     confirmationDialog.value = false
     successMessage.value = 'Instructor account created successfully! Redirecting to login...'
@@ -246,7 +246,7 @@ const submitRegistration = async () => {
     
   } catch (error) {
     console.error('Error registering instructor:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to register instructor'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to register instructor'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
     confirmationDialog.value = false

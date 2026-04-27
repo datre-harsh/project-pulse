@@ -6,6 +6,50 @@
     <v-alert v-if="success" type="success" class="mb-4" closable @click:close="success = ''">{{ success }}</v-alert>
 
     <v-card class="mb-6">
+      <v-card-title>Add Students</v-card-title>
+      <v-card-text>
+        <v-row>
+          <v-col cols="12" md="4">
+            <v-select
+              v-model="invitation.sectionId"
+              :items="sections"
+              item-title="name"
+              item-value="id"
+              label="Senior Design Section"
+              :disabled="!sections.length"
+            />
+          </v-col>
+          <v-col cols="12" md="8">
+            <v-textarea
+              v-model="invitation.emails"
+              label="Student Emails"
+              rows="2"
+              auto-grow
+              placeholder="student1@tcu.edu; student2@tcu.edu"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="invitation.subject" label="Subject" clearable />
+          </v-col>
+          <v-col cols="12" md="8">
+            <v-textarea
+              v-model="invitation.message"
+              label="Message"
+              rows="2"
+              auto-grow
+              clearable
+            />
+          </v-col>
+        </v-row>
+
+        <div class="d-flex flex-wrap ga-3 mt-2">
+          <v-btn color="primary" :loading="inviting" @click="sendStudentInvites">Send Invitations</v-btn>
+          <v-btn variant="text" @click="resetInvitation">Clear</v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
+    <v-card class="mb-6">
       <v-card-title>Find Students</v-card-title>
       <v-card-text>
         <v-row>
@@ -59,9 +103,7 @@
       class="mb-4"
       variant="tonal"
     >
-      No matching students were found. You can invite students from the
-      <router-link to="/sections">Sections</router-link>
-      page or adjust your search criteria.
+      No matching students were found. Use Add Students above to invite them to a senior design section, or adjust your search criteria.
     </v-alert>
 
     <v-data-table
@@ -137,6 +179,7 @@ const selectedStudent = ref(null)
 const pendingDelete = ref(null)
 const deleteDialog = ref(false)
 const deleting = ref(false)
+const inviting = ref(false)
 const searched = ref(false)
 const error = ref('')
 const success = ref('')
@@ -158,6 +201,13 @@ const filters = ref({
   teamName: '',
   sectionId: null,
   teamId: null
+})
+
+const invitation = ref({
+  sectionId: null,
+  emails: '',
+  subject: '',
+  message: ''
 })
 
 const hasSearchCriteria = computed(() =>
@@ -190,6 +240,48 @@ const resetFilters = () => {
   searched.value = false
   error.value = ''
   success.value = ''
+}
+
+const resetInvitation = () => {
+  invitation.value = {
+    sectionId: null,
+    emails: '',
+    subject: '',
+    message: ''
+  }
+}
+
+const sendStudentInvites = async () => {
+  error.value = ''
+  success.value = ''
+
+  if (!invitation.value.sectionId) {
+    error.value = 'Choose a senior design section before inviting students.'
+    return
+  }
+
+  if (!invitation.value.emails.trim()) {
+    error.value = 'Enter at least one student email address.'
+    return
+  }
+
+  inviting.value = true
+
+  try {
+    const res = await api.post(`/sections/${invitation.value.sectionId}/student-invitations`, {
+      sectionId: invitation.value.sectionId,
+      emails: invitation.value.emails,
+      subject: invitation.value.subject,
+      message: invitation.value.message
+    })
+    const count = Array.isArray(res.data) ? res.data.length : 0
+    success.value = count === 1 ? '1 student invitation was prepared.' : `${count} student invitations were prepared.`
+    resetInvitation()
+  } catch (err) {
+    error.value = err.response?.data?.error || 'Unable to send student invitations.'
+  } finally {
+    inviting.value = false
+  }
 }
 
 const searchStudents = async () => {

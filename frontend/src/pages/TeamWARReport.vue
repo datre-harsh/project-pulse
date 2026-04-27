@@ -208,7 +208,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -255,7 +255,7 @@ const loadTeamWARReport = async () => {
   
   loading.value = true
   try {
-    const response = await axios.get(`/api/teams/${selectedTeamId.value}/war-report/${selectedWeekId.value}`)
+    const response = await api.get(`/teams/${selectedTeamId.value}/war-report/${selectedWeekId.value}`)
     console.log('WAR Report Response:', response.data) // Debug logging
     warReport.value = response.data
     
@@ -263,7 +263,7 @@ const loadTeamWARReport = async () => {
     showSuccessMessage.value = true
   } catch (error) {
     console.error('Error loading team WAR report:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to generate team WAR report'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to generate team WAR report'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {
