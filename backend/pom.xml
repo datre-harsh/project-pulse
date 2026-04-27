@@ -17,7 +17,7 @@
     <description>Project Pulse backend API</description>
 
     <properties>
-        <java.version>20</java.version>
+        <java.version>17</java.version>
     </properties>
 
     <dependencies>
@@ -32,6 +32,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

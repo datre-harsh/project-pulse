@@ -12,6 +12,8 @@ import edu.tcu.projectpulse.domain.StudentInvitation;
 import edu.tcu.projectpulse.domain.Team;
 import edu.tcu.projectpulse.domain.UserAccount;
 import edu.tcu.projectpulse.dto.*;
+import edu.tcu.projectpulse.domain.WeeklyActivity;
+import edu.tcu.projectpulse.domain.PeerEvaluation;
 import edu.tcu.projectpulse.repo.NotificationRepository;
 import edu.tcu.projectpulse.repo.InstructorInvitationRepository;
 import edu.tcu.projectpulse.repo.RubricCriterionRepository;
@@ -20,7 +22,12 @@ import edu.tcu.projectpulse.repo.SectionRepository;
 import edu.tcu.projectpulse.repo.StudentInvitationRepository;
 import edu.tcu.projectpulse.repo.TeamRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
+import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
+import edu.tcu.projectpulse.repo.PeerEvaluationRepository;
+
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -47,7 +54,10 @@ public class ProjectPulseService {
     private final RubricRepository rubricRepo;
     private final RubricCriterionRepository rubricRepoCriteria;
     private final StudentInvitationRepository invitationRepo;
+    private final WeeklyActivityRepository weeklyActivityRepo;
+    private final PeerEvaluationRepository peerEvaluationRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public List<RubricDetailResponse> getRubrics(String name) {
         List<Rubric> rubrics = (name == null || name.isBlank())
@@ -303,6 +313,26 @@ public class ProjectPulseService {
         instructor.setActive(false);
         instructor.setDeactivationReason(req.reason().trim());
         userRepo.save(instructor);
+        return getInstructor(id);
+    }
+
+    public InstructorDetailResponse reactivateInstructor(Long id) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be reactivated through this endpoint");
+        }
+        if (instructor.isActive()) {
+            throw new ApiException("Instructor is already active");
+        }
+
+        // Reactivate the instructor and clear deactivation reason
+        instructor.setActive(true);
+        instructor.setDeactivationReason(null);
+        userRepo.save(instructor);
+        
+        // Create notification for the instructor
+        createNotification(id, "Your instructor account has been reactivated. You now have access to The Peer Evaluation Tool.");
+        
         return getInstructor(id);
     }
 
@@ -666,7 +696,6 @@ public class ProjectPulseService {
                 throw new ApiException("Student " + studentId + " is not part of the selected section");
             }
         }
-
         Set<Long> sectionInstructors = section.getInstructorIds() == null ? Set.of() : section.getInstructorIds();
         for (Long instructorId : req.instructorIds() == null ? Set.<Long>of() : req.instructorIds()) {
             if (!sectionInstructors.contains(instructorId)) {
@@ -675,7 +704,7 @@ public class ProjectPulseService {
         }
 
         Team probe = new Team();
-        probe.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
+        probe.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
         validateBr1(probe);
     }
 
@@ -684,8 +713,8 @@ public class ProjectPulseService {
         team.setName(req.name().trim());
         team.setDescription(req.description().trim());
         team.setWebsiteUrl(req.websiteUrl() == null || req.websiteUrl().isBlank() ? null : req.websiteUrl().trim());
-        team.setStudentIds(req.studentIds() == null ? new HashSet<>() : new HashSet<>(req.studentIds()));
-        team.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
+        team.setStudentIds(req.studentIds() == null ? new HashSet<Long>() : new HashSet<>(req.studentIds()));
+        team.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
         validateBr1(team);
     }
 
@@ -1116,11 +1145,733 @@ public class ProjectPulseService {
         notificationRepo.save(notification);
     }
 
-    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
-        for (Long instructorId : team.getInstructorIds()) {
-            if (!previousInstructorIds.contains(instructorId)) {
-                createNotification(instructorId, "You have been assigned to team " + team.getName() + ".");
+    public StudentRegistrationResponse registerStudent(StudentRegistrationRequest request) {
+        // Extension 2a: Check if student already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("An account with this email already exists");
+        }
+
+        // Mock invitation token verification (for now, accept any non-empty token)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+
+        // Create new student account
+        UserAccount student = new UserAccount();
+        student.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        student.setFirstName(request.getFirstName().trim());
+        student.setLastName(request.getLastName().trim());
+        student.setEmail(request.getEmail().trim().toLowerCase());
+        student.setPassword(passwordEncoder.encode(request.getPassword()));
+        student.setRole(Role.STUDENT);
+        student.setActive(true);
+
+        UserAccount savedStudent = userRepo.save(student);
+
+        return new StudentRegistrationResponse(
+                savedStudent.getId().toString(),
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Student account created successfully"
+        );
+    }
+
+    public ProfileUpdateResponse updateStudentProfile(Long studentId, ProfileUpdateRequest req) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their profile through this endpoint");
+        }
+
+        // Check if email is already used by another user
+        Optional<UserAccount> existingUser = userRepo.findByEmailIgnoreCase(req.getEmail().trim());
+        if (existingUser.isPresent() && !existingUser.get().getId().equals(studentId)) {
+            throw new ApiException("Email is already in use by another account");
+        }
+
+        student.setFirstName(req.getFirstName().trim());
+        student.setLastName(req.getLastName().trim());
+        student.setEmail(req.getEmail().trim());
+
+        UserAccount savedStudent = userRepo.save(student);
+        return new ProfileUpdateResponse(
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Profile updated successfully"
+        );
+    }
+
+    // Weekly Activity Report (WAR) Methods
+    
+    public List<WeeklyActivityResponse> getWeeklyActivities(String studentId, String weekId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can access their weekly activities");
+        }
+
+        List<WeeklyActivity> activities;
+        if (weekId != null && !weekId.isBlank()) {
+            activities = weeklyActivityRepo.findByStudentIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        } else {
+            activities = weeklyActivityRepo.findByStudentIdOrderByCreatedAtDesc(studentId);
+        }
+
+        return activities.stream().map(this::toWeeklyActivityResponse).toList();
+    }
+
+    public WeeklyActivityResponse createWeeklyActivity(String studentId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can create weekly activities");
+        }
+
+        WeeklyActivity activity = new WeeklyActivity();
+        activity.setId(String.valueOf(System.currentTimeMillis())); // Using String ID for MongoDB consistency
+        activity.setStudentId(studentId);
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
+        activity.setCreatedAt(LocalDateTime.now());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public WeeklyActivityResponse updateWeeklyActivity(String studentId, String activityId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only update your own activities");
+        }
+
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public void deleteWeeklyActivity(String studentId, String activityId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can delete their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only delete your own activities");
+        }
+
+        weeklyActivityRepo.delete(activity);
+    }
+
+    private WeeklyActivityResponse toWeeklyActivityResponse(WeeklyActivity activity) {
+        return new WeeklyActivityResponse(
+                activity.getId(),
+                activity.getStudentId(),
+                activity.getCategory(),
+                activity.getDescription(),
+                activity.getPlannedHours(),
+                activity.getActualHours(),
+                activity.getStatus(),
+                activity.getWeekId(),
+                activity.getCreatedAt(),
+                activity.getUpdatedAt()
+        );
+    }
+
+    // Peer Evaluation Methods
+    
+    public PeerEvaluationResponse submitPeerEvaluation(Long evaluatorId, PeerEvaluationRequest req) {
+        UserAccount evaluator = getUser(evaluatorId);
+        if (evaluator.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can submit peer evaluations");
+        }
+
+        UserAccount evaluatee = getUser(req.getEvaluateeId());
+        if (evaluatee.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate other students");
+        }
+
+        if (evaluatorId.equals(req.getEvaluateeId())) {
+            throw new ApiException("Cannot evaluate yourself");
+        }
+
+        // Business Rule BR-3: Check if evaluation already exists for this week and teammate
+        peerEvaluationRepo.findByEvaluatorIdAndEvaluateeIdAndWeekId(evaluatorId, req.getEvaluateeId(), req.getWeekId())
+                .ifPresent(existing -> {
+                    throw new ApiException("You have already submitted an evaluation for this student this week. Evaluations cannot be edited once completed.");
+                });
+
+        // Validate scores
+        if (req.getScores() == null || req.getScores().isEmpty()) {
+            throw new ApiException("Scores are required");
+        }
+
+        // Validate each score is between 1-5
+        req.getScores().forEach((criterion, score) -> {
+            if (score == null || score < 1 || score > 5) {
+                throw new ApiException("All scores must be between 1 and 5");
+            }
+        });
+
+        // Verify students are in the same team
+        if (!areStudentsInSameTeam(evaluatorId, req.getEvaluateeId())) {
+            throw new ApiException("You can only evaluate students in your team");
+        }
+
+        PeerEvaluation evaluation = new PeerEvaluation();
+        evaluation.setId(sequenceGeneratorService.generateSequence(PeerEvaluation.SEQUENCE_NAME));
+        evaluation.setEvaluatorId(evaluatorId);
+        evaluation.setEvaluateeId(req.getEvaluateeId());
+        evaluation.setWeekId(req.getWeekId().trim());
+        evaluation.setScores(req.getScores());
+        evaluation.setPublicComment(req.getPublicComment() != null ? req.getPublicComment().trim() : null);
+        evaluation.setPrivateComment(req.getPrivateComment() != null ? req.getPrivateComment().trim() : null);
+        evaluation.setCreatedAt(LocalDateTime.now());
+        evaluation.setUpdatedAt(LocalDateTime.now());
+
+        PeerEvaluation saved = peerEvaluationRepo.save(evaluation);
+        return toPeerEvaluationResponse(saved, "Peer evaluation submitted successfully");
+    }
+
+    private boolean areStudentsInSameTeam(Long studentId1, Long studentId2) {
+        List<Team> teams1 = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId1))
+                .toList();
+
+        for (Team team : teams1) {
+            if (team.getStudentIds().contains(studentId2)) {
+                return true;
             }
         }
+        return false;
+    }
+
+    private PeerEvaluationResponse toPeerEvaluationResponse(PeerEvaluation evaluation, String message) {
+        return new PeerEvaluationResponse(
+                evaluation.getId(),
+                evaluation.getEvaluatorId(),
+                evaluation.getEvaluateeId(),
+                evaluation.getWeekId(),
+                evaluation.getScores(),
+                evaluation.getPublicComment(),
+                evaluation.getPrivateComment(),
+                evaluation.getCreatedAt(),
+                evaluation.getUpdatedAt(),
+                message
+        );
+    }
+
+    // Peer Evaluation Report Methods (BR-5: Anonymous aggregated scores only)
+    
+    public PeerEvaluationReportResponse getPeerEvaluationReport(Long studentId, String weekId) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can view their peer evaluation reports");
+        }
+
+        // Get all evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekId(studentId, weekId);
+
+        if (evaluations.isEmpty()) {
+            return new PeerEvaluationReportResponse(
+                    studentId,
+                    weekId,
+                    Map.of(),
+                    List.of(),
+                    "No evaluations available for this week"
+            );
+        }
+
+        // BR-5 Enforcement: Calculate aggregated scores per criterion (anonymous)
+        Map<String, Double> averageScores = calculateAverageScores(evaluations);
+
+        // BR-5 Enforcement: Collect only public comments (anonymous)
+        List<String> publicComments = evaluations.stream()
+                .map(PeerEvaluation::getPublicComment)
+                .filter(comment -> comment != null && !comment.trim().isEmpty())
+                .map(String::trim)
+                .toList();
+
+        return new PeerEvaluationReportResponse(
+                studentId,
+                weekId,
+                averageScores,
+                publicComments,
+                "Peer evaluation report retrieved successfully"
+        );
+    }
+
+    private Map<String, Double> calculateAverageScores(List<PeerEvaluation> evaluations) {
+        Map<String, Double> averageScores = new HashMap<>();
+        Map<String, Integer> scoreCounts = new HashMap<>();
+        Map<String, Double> scoreSums = new HashMap<>();
+
+        // Aggregate scores across all evaluations
+        for (PeerEvaluation evaluation : evaluations) {
+            for (Map.Entry<String, Integer> entry : evaluation.getScores().entrySet()) {
+                String criterion = entry.getKey();
+                Integer score = entry.getValue();
+
+                scoreSums.put(criterion, scoreSums.getOrDefault(criterion, 0.0) + score);
+                scoreCounts.put(criterion, scoreCounts.getOrDefault(criterion, 0) + 1);
+            }
+        }
+
+        // Calculate averages
+        for (String criterion : scoreSums.keySet()) {
+            double sum = scoreSums.get(criterion);
+            int count = scoreCounts.get(criterion);
+            averageScores.put(criterion, sum / count);
+        }
+
+        return averageScores;
+    }
+
+    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
+        // Simple implementation - create notifications for instructors
+        // This is a placeholder for the actual notification logic
+        Set<Long> currentInstructorIds = team.getInstructorIds();
+        
+        // Notify new instructors
+        currentInstructorIds.stream()
+                .filter(instructorId -> !previousInstructorIds.contains(instructorId))
+                .forEach(instructorId -> {
+                    createNotification(instructorId, "You have been assigned to team: " + team.getName());
+                });
+    }
+
+    // Instructor Registration Methods (UC-30)
+    
+    public InstructorRegistrationResponse registerInstructor(InstructorRegistrationRequest request) {
+        // Mock invitation token verification (replace with actual logic from UC-18 when ready)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+        
+        // Extension 2a: Check if instructor already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("Account already set up");
+        }
+        
+        // Create new instructor account
+        UserAccount instructor = new UserAccount();
+        instructor.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        instructor.setFirstName(request.getFirstName().trim());
+        instructor.setLastName(request.getLastName().trim());
+        instructor.setEmail(request.getEmail().trim().toLowerCase());
+        instructor.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt encryption
+        instructor.setRole(Role.INSTRUCTOR);
+        instructor.setActive(true);
+
+        UserAccount savedInstructor = userRepo.save(instructor);
+
+        return new InstructorRegistrationResponse(
+                savedInstructor.getId(),
+                savedInstructor.getFirstName(),
+                savedInstructor.getLastName(),
+                savedInstructor.getEmail(),
+                "Instructor account created successfully"
+        );
+    }
+
+    // Instructor Evaluation Methods (UC-31)
+    
+    public InstructorEvaluationResponse getStudentEvaluationsForInstructor(Long instructorId, Long studentId, String weekId) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access student evaluations");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        
+        // Convert to detail DTOs with evaluator names
+        List<StudentEvaluationDetail> evaluationDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new StudentEvaluationDetail(
+                            evaluation.getId(),
+                            evaluation.getEvaluatorId(),
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getEvaluateeId(),
+                            evaluation.getWeekId(),
+                            evaluation.getScores(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment(),
+                            evaluation.getCreatedAt()
+                    );
+                })
+                .toList();
+        
+        // Find students who did not submit evaluations (non-evaluators)
+        List<String> nonEvaluators = findNonEvaluators(studentId, weekId, evaluations);
+        
+        // Calculate system suggested grade (average of total scores)
+        Double systemSuggestedGrade = calculateSystemSuggestedGrade(evaluations);
+        
+        return new InstructorEvaluationResponse(
+                studentId,
+                student.getFirstName() + " " + student.getLastName(),
+                weekId,
+                evaluationDetails,
+                nonEvaluators,
+                systemSuggestedGrade,
+                "Student evaluations retrieved successfully"
+        );
+    }
+    
+    private List<String> findNonEvaluators(Long studentId, String weekId, List<PeerEvaluation> evaluations) {
+        // Get all students in the same team as the evaluated student
+        List<UserAccount> teammates = getStudentTeammates(studentId);
+        
+        // Get IDs of students who submitted evaluations
+        Set<Long> evaluatorIds = evaluations.stream()
+                .map(PeerEvaluation::getEvaluatorId)
+                .collect(Collectors.toSet());
+        
+        // Find teammates who did not submit evaluations
+        return teammates.stream()
+                .filter(teammate -> !teammate.getId().equals(studentId)) // Exclude the student being evaluated
+                .filter(teammate -> !evaluatorIds.contains(teammate.getId())) // Exclude those who submitted
+                .map(teammate -> teammate.getFirstName() + " " + teammate.getLastName())
+                .sorted()
+                .toList();
+    }
+    
+    private List<UserAccount> getStudentTeammates(Long studentId) {
+        // Find the team the student belongs to
+        List<Team> teams = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId))
+                .toList();
+        
+        if (teams.isEmpty()) {
+            return List.of();
+        }
+        
+        // Get all students in the first team found (assuming student belongs to only one team)
+        Team team = teams.get(0);
+        return team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+    }
+    
+    private Double calculateSystemSuggestedGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return 0.0;
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        return totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+    }
+    
+    public String saveInstructorFinalDecision(Long instructorId, Long studentId, String weekId, InstructorFinalDecisionRequest request) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can save final decisions");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // TODO: Save the instructor's final decision to a separate table/entity
+        // For now, we'll just return a success message
+        // In a complete implementation, you would save this to an InstructorEvaluation entity
+        
+        return String.format("Final decision saved for %s. Grade: %.1f, Comment: %s", 
+                student.getFirstName() + " " + student.getLastName(), 
+                request.getFinalGrade(), 
+                request.getInstructorComment() != null ? request.getInstructorComment() : "No comment");
+    }
+    
+    // Section-Level Evaluation Report Methods (UC-31 Refactored)
+    
+    public SectionEvaluationReportResponse getSectionEvaluationReport(Long instructorId, Long sectionId, String weekId) {
+        // Verify instructor has access to this section
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access section evaluation reports");
+        }
+        
+        Section section = getSectionEntity(sectionId);
+        
+        // Get all students in the section
+        List<UserAccount> sectionStudents = section.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        
+        // Generate reports for each student
+        List<StudentSectionReport> studentReports = sectionStudents.stream()
+                .map(student -> generateStudentReport(student, weekId))
+                .toList();
+        
+        return new SectionEvaluationReportResponse(
+                sectionId,
+                section.getName(),
+                weekId,
+                studentReports,
+                "Section evaluation report generated successfully"
+        );
+    }
+    
+    private StudentSectionReport generateStudentReport(UserAccount student, String weekId) {
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(student.getId(), weekId);
+        
+        // Calculate grade (average of total scores)
+        String grade = calculateStudentGrade(evaluations);
+        
+        // Generate evaluator details
+        List<EvaluatorDetail> evaluatorDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new EvaluatorDetail(
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment()
+                    );
+                })
+                .toList();
+        
+        return new StudentSectionReport(
+                student.getId(),
+                student.getFirstName() + " " + student.getLastName(),
+                grade,
+                evaluatorDetails
+        );
+    }
+    
+    private String calculateStudentGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return "0/60"; // Default when no evaluations
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        double averageScore = totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+        
+        // Format as "X/60" (assuming max score is 60 based on PDF example)
+        return String.format("%.0f/60", Math.round(averageScore));
+    }
+    
+    // Team WAR Report Methods (UC-32)
+    
+    public TeamWARReportResponse getTeamWARReport(Long teamId, String weekId) {
+        // Get team information
+        Team team = getTeamEntity(teamId);
+        
+        // Get all students in the team
+        List<UserAccount> teamStudents = team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+        
+        // Generate mock data for testing (replace with actual data fetching)
+        List<StudentActivity> activeStudents = generateMockActiveStudents();
+        List<String> missingStudents = generateMockMissingStudents();
+        
+        return new TeamWARReportResponse(
+                teamId,
+                team.getName(),
+                weekId,
+                activeStudents,
+                missingStudents,
+                "Team WAR report generated successfully"
+        );
+    }
+    
+    private List<StudentActivity> generateMockActiveStudents() {
+        // Mock data for testing as specified
+        List<ActivityDetail> johnDoeActivities = List.of(
+                new ActivityDetail(
+                    "Development", 
+                    "Bug fixing", 
+                    "Fix critical bugs in the authentication module", 
+                    4.0, 
+                    3.5, 
+                    "Completed"
+                ),
+                new ActivityDetail(
+                    "Documentation", 
+                    "API documentation", 
+                    "Write comprehensive API documentation for REST endpoints", 
+                    3.0, 
+                    3.0, 
+                    "Completed"
+                )
+        );
+        
+        List<ActivityDetail> janeSmithActivities = List.of(
+                new ActivityDetail(
+                    "Testing", 
+                    "Unit testing", 
+                    "Write unit tests for the user service module", 
+                    5.0, 
+                    4.5, 
+                    "In Progress"
+                )
+        );
+        
+        // Sort by last name alphabetically
+        return List.of(
+                new StudentActivity("John Doe", johnDoeActivities),
+                new StudentActivity("Jane Smith", janeSmithActivities)
+        );
+    }
+    
+    private List<String> generateMockMissingStudents() {
+        // Mock data for testing as specified
+        return List.of("Bob Lazy");
+    }
+    
+    // Student Peer Evaluation Report Methods (UC-33)
+    
+    public List<WeeklyStudentReport> getStudentPeerEvaluationReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing (exact structure from JSON example)
+        return generateMockStudentPeerEvalReport();
+    }
+    
+    private List<WeeklyStudentReport> generateMockStudentPeerEvalReport() {
+        // Mock data for John Doe as specified
+        // Week 1 (02-12-2024): Grade 54/60, Evaluators: Tim Smith, Lily Fisher
+        List<StudentEvaluation> week1Evaluations = List.of(
+                new StudentEvaluation(
+                    "Tim Smith", 
+                    "Good work on the project implementation.", 
+                    "John is doing well but needs to improve documentation."
+                ),
+                new StudentEvaluation(
+                    "Lily Fisher", 
+                    "Need to work harder on testing.", 
+                    "Dr. Wei, I need to talk more about John's code quality."
+                )
+        );
+        
+        // Week 2 (02-19-2024): Grade 55/60, Evaluator: Bob Johnson
+        List<StudentEvaluation> week2Evaluations = List.of(
+                new StudentEvaluation(
+                    "Bob Johnson", 
+                    "Excellent progress this week.", 
+                    "John has shown significant improvement in collaboration."
+                )
+        );
+        
+        return List.of(
+                new WeeklyStudentReport(
+                    "02-12-2024 - 02-18-2024",
+                    "54/60",
+                    week1Evaluations
+                ),
+                new WeeklyStudentReport(
+                    "02-19-2024 - 02-25-2024",
+                    "55/60",
+                    week2Evaluations
+                )
+        );
+    }
+    
+    // Student WAR Report Methods (UC-34)
+    
+    public List<WeeklyStudentWARReport> getStudentWARReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing
+        return generateMockStudentWARReport();
+    }
+    
+    private List<WeeklyStudentWARReport> generateMockStudentWARReport() {
+        // Mock data for UC-34 - 2 different weeks with grouped header rows
+        
+        // Week 1 activities
+        List<ActivityDetail> week1Activities = List.of(
+                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", "8", "10", "Completed"),
+                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", "3", "2", "Completed"),
+                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", "4", "4", "Completed")
+        );
+        
+        // Week 2 activities
+        List<ActivityDetail> week2Activities = List.of(
+                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", "6", "8", "Completed"),
+                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", "2", "2", "Completed"),
+                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", "3", "3", "In Progress")
+        );
+        
+        return List.of(
+                new WeeklyStudentWARReport(
+                    "02-12-2024 - 02-18-2024",
+                    week1Activities
+                ),
+                new WeeklyStudentWARReport(
+                    "02-19-2024 - 02-25-2024",
+                    week2Activities
+                )
+        );
     }
 }

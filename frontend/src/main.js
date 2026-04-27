@@ -12,6 +12,14 @@ import TeamsPage from './pages/TeamsPage.vue'
 import RubricPage from './pages/RubricPage.vue'
 import StudentsPage from './pages/StudentsPage.vue'
 import InstructorsPage from './pages/InstructorsPage.vue'
+import ProfilePage from './pages/ProfilePage.vue'
+import ManageWAR from './pages/ManageWAR.vue'
+import SubmitPeerEval from './pages/SubmitPeerEval.vue'
+import ViewPeerEvalReport from './pages/ViewPeerEvalReport.vue'
+import RegisterInstructor from './pages/RegisterInstructor.vue'
+import EvaluateStudent from './pages/EvaluateStudent.vue'
+import TeamWARReport from './pages/TeamWARReport.vue'
+import StudentPeerEvalReport from './pages/StudentPeerEvalReport.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
@@ -19,7 +27,15 @@ const routes = [
   { path: '/teams', component: TeamsPage },
   { path: '/students', component: StudentsPage },
   { path: '/instructors', component: InstructorsPage },
-  { path: '/rubric', component: RubricPage }
+  { path: '/rubric', component: RubricPage },
+  { path: '/war', component: ManageWAR },
+  { path: '/peer-evaluation', component: SubmitPeerEval },
+  { path: '/peer-evaluation-report', component: ViewPeerEvalReport },
+  { path: '/register-instructor/:token', component: RegisterInstructor },
+  { path: '/evaluate-student', component: EvaluateStudent },
+  { path: '/team-war-report', component: TeamWARReport },
+  { path: '/student-peer-eval-report', component: StudentPeerEvalReport },
+  { path: '/profile', component: ProfilePage }
 ]
 
 const router = createRouter({

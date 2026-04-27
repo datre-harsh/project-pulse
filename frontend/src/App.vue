@@ -12,6 +12,14 @@
         <v-list-item to="/students" title="Students" prepend-icon="mdi-account-search"></v-list-item>
         <v-list-item to="/instructors" title="Instructors" prepend-icon="mdi-account-tie"></v-list-item>
         <v-list-item to="/rubric" title="Rubric" prepend-icon="mdi-clipboard-text"></v-list-item>
+        <v-list-item to="/war" title="Weekly Activity Report" prepend-icon="mdi-chart-line"></v-list-item>
+        <v-list-item to="/peer-evaluation" title="Peer Evaluation" prepend-icon="mdi-account-group"></v-list-item>
+        <v-list-item to="/peer-evaluation-report" title="View My Report" prepend-icon="mdi-chart-box"></v-list-item>
+        <v-list-item to="/evaluate-student" title="Evaluate Students" prepend-icon="mdi-account-check"></v-list-item>
+        <v-list-item to="/team-war-report" title="Team WAR Report" prepend-icon="mdi-file-chart"></v-list-item>
+        <v-list-item to="/student-peer-eval-report" title="Student Peer Eval Report" prepend-icon="mdi-account-search"></v-list-item>
+        <v-divider class="my-2"></v-divider>
+        <v-list-item to="/profile" title="Profile" prepend-icon="mdi-account-circle"></v-list-item>
       </v-list>
     </v-navigation-drawer>
 

@@ -79,6 +79,11 @@ public class ProjectPulseController {
         return service.deactivateInstructor(id, req);
     }
 
+    @PutMapping("/instructors/{id}/reactivate")
+    public InstructorDetailResponse reactivateInstructor(@PathVariable Long id) {
+        return service.reactivateInstructor(id);
+    }
+
     @GetMapping("/students/{id}")
     public StudentDetailResponse getStudent(
             @PathVariable Long id,
@@ -101,6 +106,127 @@ public class ProjectPulseController {
     @PostMapping("/instructor-invitations")
     public List<InstructorInvitationResponse> inviteInstructors(@Valid @RequestBody InstructorInvitationRequest req) {
         return service.inviteInstructors(req);
+    }
+
+    @PostMapping("/students/register")
+    public StudentRegistrationResponse registerStudent(@Valid @RequestBody StudentRegistrationRequest req) {
+        return service.registerStudent(req);
+    }
+
+    @GetMapping("/students/profile")
+    public ProfileUpdateResponse getStudentProfile() {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        UserAccount student = service.getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can access their profile through this endpoint");
+        }
+        return new ProfileUpdateResponse(
+                student.getId().toString(),
+                student.getFirstName(),
+                student.getLastName(),
+                student.getEmail(),
+                "Profile loaded successfully"
+        );
+    }
+
+    @PutMapping("/students/profile")
+    public ProfileUpdateResponse updateStudentProfile(@Valid @RequestBody ProfileUpdateRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        return service.updateStudentProfile(studentId, req);
+    }
+
+    // Weekly Activity Report (WAR) Endpoints
+    
+    @GetMapping("/students/war")
+    public List<WeeklyActivityResponse> getWeeklyActivities(
+            @RequestParam(required = false) String weekId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.getWeeklyActivities(studentId, weekId);
+    }
+
+    @PostMapping("/students/war")
+    public WeeklyActivityResponse createWeeklyActivity(@Valid @RequestBody WeeklyActivityRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.createWeeklyActivity(studentId, req);
+    }
+
+    @PutMapping("/students/war/{activityId}")
+    public WeeklyActivityResponse updateWeeklyActivity(
+            @PathVariable String activityId, 
+            @Valid @RequestBody WeeklyActivityRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.updateWeeklyActivity(studentId, activityId, req);
+    }
+
+    @DeleteMapping("/students/war/{activityId}")
+    public void deleteWeeklyActivity(@PathVariable String activityId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        service.deleteWeeklyActivity(studentId, activityId);
+    }
+
+    // Peer Evaluation Endpoints
+    
+    @PostMapping("/students/peer-evaluation")
+    public PeerEvaluationResponse submitPeerEvaluation(@Valid @RequestBody PeerEvaluationRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long evaluatorId = 1L; // This should come from the authenticated user
+        return service.submitPeerEvaluation(evaluatorId, req);
+    }
+
+    @GetMapping("/students/peer-evaluations/report/{weekId}")
+    public PeerEvaluationReportResponse getPeerEvaluationReport(@PathVariable String weekId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long studentId = 1L; // This should come from the authenticated user
+        return service.getPeerEvaluationReport(studentId, weekId);
+    }
+
+    // Instructor Registration Endpoints (UC-30)
+    
+    @PostMapping("/instructors/register")
+    public InstructorRegistrationResponse registerInstructor(@Valid @RequestBody InstructorRegistrationRequest request) {
+        return service.registerInstructor(request);
+    }
+
+    // Instructor Evaluation Endpoints (UC-31 Refactored)
+    
+    @GetMapping("/instructors/sections/{sectionId}/evaluations/{weekId}")
+    public SectionEvaluationReportResponse getSectionEvaluationReport(@PathVariable Long sectionId, @PathVariable String weekId) {
+        // TODO: Get instructor ID from authentication context (currently hardcoded for demo)
+        Long instructorId = 2L; // This should come from the authenticated user
+        return service.getSectionEvaluationReport(instructorId, sectionId, weekId);
+    }
+
+    // Team WAR Report Endpoints (UC-32)
+    
+    @GetMapping("/teams/{teamId}/war-report/{weekId}")
+    public TeamWARReportResponse getTeamWARReport(@PathVariable Long teamId, @PathVariable String weekId) {
+        return service.getTeamWARReport(teamId, weekId);
+    }
+
+    // Student Peer Evaluation Report Endpoints (UC-33)
+    
+    @GetMapping("/students/{studentId}/peer-evaluation-report")
+    public List<WeeklyStudentReport> getStudentPeerEvaluationReport(
+            @PathVariable Long studentId, 
+            @RequestParam String startWeekId, 
+            @RequestParam String endWeekId) {
+        return service.getStudentPeerEvaluationReport(studentId, startWeekId, endWeekId);
+    }
+
+    // Student WAR Report Endpoints (UC-34)
+    
+    @GetMapping("/students/{studentId}/war-report")
+    public List<WeeklyStudentWARReport> getStudentWARReport(
+            @PathVariable Long studentId, 
+            @RequestParam String startWeekId, 
+            @RequestParam String endWeekId) {
+        return service.getStudentWARReport(studentId, startWeekId, endWeekId);
     }
 
     @GetMapping("/users/{id}/notifications")
