@@ -1,25 +1,29 @@
 package edu.tcu.projectpulse.domain;
 
-import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-@Entity
-@Table(name = "rubric_criteria")
+import java.math.BigDecimal;
+
+@Document("rubric_criteria")
 @Getter
 @Setter
 public class RubricCriterion {
 
+    public static final String SEQUENCE_NAME = "rubric_criteria_sequence";
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    private Long rubricId;
+
     private String name;
 
-    @Column(nullable = false)
-    private Integer maxScore;
+    private String description;
 
-    @Column(nullable = false)
+    private BigDecimal maxScore;
+
     private boolean active = true;
 }

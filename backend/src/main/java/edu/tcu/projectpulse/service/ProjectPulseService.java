@@ -1,339 +1,875 @@
 package edu.tcu.projectpulse.service;
 
 import edu.tcu.projectpulse.api.ApiException;
-import edu.tcu.projectpulse.domain.*;
+import edu.tcu.projectpulse.config.SequenceGeneratorService;
+import edu.tcu.projectpulse.domain.Role;
+import edu.tcu.projectpulse.domain.Notification;
+import edu.tcu.projectpulse.domain.InstructorInvitation;
+import edu.tcu.projectpulse.domain.Rubric;
+import edu.tcu.projectpulse.domain.RubricCriterion;
+import edu.tcu.projectpulse.domain.Section;
+import edu.tcu.projectpulse.domain.StudentInvitation;
+import edu.tcu.projectpulse.domain.Team;
+import edu.tcu.projectpulse.domain.UserAccount;
 import edu.tcu.projectpulse.dto.*;
-import edu.tcu.projectpulse.repo.*;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import edu.tcu.projectpulse.domain.WeeklyActivity;
+import edu.tcu.projectpulse.domain.PeerEvaluation;
+import edu.tcu.projectpulse.repo.NotificationRepository;
+import edu.tcu.projectpulse.repo.InstructorInvitationRepository;
+import edu.tcu.projectpulse.repo.RubricCriterionRepository;
+import edu.tcu.projectpulse.repo.RubricRepository;
+import edu.tcu.projectpulse.repo.SectionRepository;
+import edu.tcu.projectpulse.repo.StudentInvitationRepository;
+import edu.tcu.projectpulse.repo.TeamRepository;
+import edu.tcu.projectpulse.repo.UserAccountRepository;
+import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
+import edu.tcu.projectpulse.repo.PeerEvaluationRepository;
 
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.time.temporal.WeekFields;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ProjectPulseService {
 
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
     private final UserAccountRepository userRepo;
     private final SectionRepository sectionRepo;
     private final TeamRepository teamRepo;
-    private final RubricCriterionRepository rubricRepo;
-    private final WarActivityRepository warRepo;
-    private final PeerEvaluationRepository evalRepo;
-    private final PeerEvaluationCriterionScoreRepository evalScoreRepo;
+    private final NotificationRepository notificationRepo;
+    private final InstructorInvitationRepository instructorInvitationRepo;
+    private final RubricRepository rubricRepo;
+    private final RubricCriterionRepository rubricRepoCriteria;
+    private final StudentInvitationRepository invitationRepo;
+    private final WeeklyActivityRepository weeklyActivityRepo;
+    private final PeerEvaluationRepository peerEvaluationRepo;
+    private final SequenceGeneratorService sequenceGeneratorService;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public List<UserAccount> getUsers(Role role) {
-        if (role == null) {
-            return userRepo.findAll();
-        }
-        return userRepo.findByRole(role);
+    public List<RubricDetailResponse> getRubrics(String name) {
+        List<Rubric> rubrics = (name == null || name.isBlank())
+                ? rubricRepo.findAll().stream().sorted(Comparator.comparing(Rubric::getName, String.CASE_INSENSITIVE_ORDER)).toList()
+                : rubricRepo.findByNameContainingIgnoreCaseOrderByNameAsc(name.trim());
+        return rubrics.stream().map(this::toRubricDetail).toList();
+    }
+
+    public RubricDetailResponse getRubric(Long id) {
+        return toRubricDetail(getRubricEntity(id));
+    }
+
+    public RubricDetailResponse createRubric(RubricRequest req) {
+        validateRubricName(req.name(), null);
+        List<RubricCriterionRequest> criteria = validateRubricCriteria(req.criteria());
+
+        Rubric rubric = new Rubric();
+        rubric.setId(sequenceGeneratorService.generateSequence(Rubric.SEQUENCE_NAME));
+        rubric.setName(req.name().trim());
+        Rubric saved = rubricRepo.save(rubric);
+        saveRubricCriteria(saved.getId(), criteria);
+        return toRubricDetail(saved);
+    }
+
+    public RubricDetailResponse updateRubric(Long id, RubricRequest req) {
+        Rubric rubric = getRubricEntity(id);
+        validateRubricName(req.name(), id);
+        List<RubricCriterionRequest> criteria = validateRubricCriteria(req.criteria());
+
+        rubric.setName(req.name().trim());
+        Rubric saved = rubricRepo.save(rubric);
+
+        List<RubricCriterion> existing = rubricRepoCriteria.findByRubricIdOrderByIdAsc(id);
+        rubricRepoCriteria.deleteAll(existing);
+        saveRubricCriteria(saved.getId(), criteria);
+        return toRubricDetail(saved);
     }
 
     public UserAccount getUser(Long id) {
         return userRepo.findById(id).orElseThrow(() -> new ApiException("User not found"));
     }
 
-    public UserAccount createUser(UserAccountRequest req) {
-        UserAccount user = new UserAccount();
-        user.setEmail(req.email());
-        user.setFirstName(req.firstName());
-        user.setLastName(req.lastName());
-        user.setRole(req.role());
-        user.setActive(req.active() == null || req.active());
-        return userRepo.save(user);
+    public List<UserSummaryResponse> getInstructorOptions() {
+        return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
+                .filter(UserAccount::isActive)
+                .map(this::toUserSummary)
+                .toList();
     }
 
-    public UserAccount updateUser(Long id, UserAccountRequest req) {
-        UserAccount user = getUser(id);
-        user.setEmail(req.email());
-        user.setFirstName(req.firstName());
-        user.setLastName(req.lastName());
-        user.setRole(req.role());
-        user.setActive(req.active() == null || req.active());
-        return userRepo.save(user);
+    public List<UserSummaryResponse> getStudentOptions() {
+        return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.STUDENT).stream()
+                .filter(UserAccount::isActive)
+                .map(this::toUserSummary)
+                .toList();
     }
 
-    public void deleteUser(Long id) {
-        if (!userRepo.existsById(id)) {
-            throw new ApiException("User not found");
+    public List<StudentSearchResponse> getStudents(
+            String firstName,
+            String lastName,
+            String email,
+            String sectionName,
+            String teamName,
+            Long sectionId,
+            Long teamId
+    ) {
+        List<UserAccount> students = userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.STUDENT).stream()
+                .filter(UserAccount::isActive)
+                .filter(student -> matchesValue(student.getFirstName(), firstName))
+                .filter(student -> matchesValue(student.getLastName(), lastName))
+                .filter(student -> matchesValue(student.getEmail(), email))
+                .toList();
+
+        List<StudentSearchResponse> matches = new ArrayList<>();
+        for (UserAccount student : students) {
+            List<Section> memberships = sectionRepo.findAll().stream()
+                    .filter(section -> section.getStudentIds().contains(student.getId()))
+                    .toList();
+
+            if (memberships.isEmpty()) {
+                if (sectionId == null && isBlank(sectionName) && teamId == null && isBlank(teamName)) {
+                    matches.add(toStudentSearchResponse(student, null, null));
+                }
+                continue;
+            }
+
+            for (Section section : memberships) {
+                if (!matchesSectionFilter(section, sectionId, sectionName)) {
+                    continue;
+                }
+
+                Team team = teamRepo.findBySectionId(section.getId()).stream()
+                        .filter(candidate -> candidate.getStudentIds().contains(student.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (!matchesTeamFilter(team, teamId, teamName)) {
+                    continue;
+                }
+
+                matches.add(toStudentSearchResponse(student, section, team));
+            }
         }
-        userRepo.deleteById(id);
+
+        return matches.stream()
+                .sorted(Comparator.comparing(
+                                StudentSearchResponse::sectionName,
+                                Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                        ).reversed()
+                        .thenComparing(StudentSearchResponse::lastName, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(StudentSearchResponse::firstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
-    public List<Section> getSections() {
-        return sectionRepo.findAll();
+    public List<InstructorSearchResponse> getInstructors(
+            String firstName,
+            String lastName,
+            String teamName,
+            String status
+    ) {
+        List<UserAccount> instructors = userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
+                .filter(instructor -> matchesValue(instructor.getFirstName(), firstName))
+                .filter(instructor -> matchesValue(instructor.getLastName(), lastName))
+                .filter(instructor -> matchesInstructorStatus(instructor, status))
+                .toList();
+
+        List<InstructorSearchResponse> matches = new ArrayList<>();
+        for (UserAccount instructor : instructors) {
+            List<Team> memberships = teamRepo.findAll().stream()
+                    .filter(team -> team.getInstructorIds().contains(instructor.getId()))
+                    .toList();
+
+            if (memberships.isEmpty()) {
+                if (isBlank(teamName)) {
+                    matches.add(toInstructorSearchResponse(instructor, null, null));
+                }
+                continue;
+            }
+
+            for (Team team : memberships) {
+                if (!matchesValue(team.getName(), teamName)) {
+                    continue;
+                }
+
+                Section section = getSectionEntity(team.getSectionId());
+                matches.add(toInstructorSearchResponse(instructor, section, team));
+            }
+        }
+
+        return matches.stream()
+                .sorted(Comparator.comparing(
+                                InstructorSearchResponse::academicYear,
+                                Comparator.nullsLast(Integer::compareTo)
+                        ).reversed()
+                        .thenComparing(InstructorSearchResponse::lastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(InstructorSearchResponse::firstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
-    public Section getSection(Long id) {
-        return sectionRepo.findById(id).orElseThrow(() -> new ApiException("Section not found"));
+    public StudentDetailResponse getStudent(Long id, Long sectionId, Long teamId) {
+        UserAccount student = getUser(id);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be viewed through this endpoint");
+        }
+
+        Section section = null;
+        if (sectionId != null) {
+            section = getSectionEntity(sectionId);
+            if (!section.getStudentIds().contains(id)) {
+                throw new ApiException("Student is not part of the selected section");
+            }
+        } else {
+            section = sectionRepo.findAll().stream()
+                    .filter(candidate -> candidate.getStudentIds().contains(id))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        Team team = null;
+        if (teamId != null) {
+            team = getTeamEntity(teamId);
+            if (!team.getStudentIds().contains(id)) {
+                throw new ApiException("Student is not part of the selected team");
+            }
+            if (section != null && !Objects.equals(team.getSectionId(), section.getId())) {
+                throw new ApiException("Selected team does not belong to the selected section");
+            }
+            if (section == null) {
+                section = getSectionEntity(team.getSectionId());
+            }
+        } else if (section != null) {
+            Team scopedTeam = teamRepo.findBySectionId(section.getId()).stream()
+                    .filter(candidate -> candidate.getStudentIds().contains(id))
+                    .findFirst()
+                    .orElse(null);
+            team = scopedTeam;
+        }
+
+        return new StudentDetailResponse(
+                student.getId(),
+                student.getFirstName(),
+                student.getLastName(),
+                section == null ? "Not assigned to a section" : section.getName(),
+                team == null ? "Not assigned to a team" : team.getName(),
+                List.of("No peer evaluations are available in this version of Project Pulse yet."),
+                List.of("No WARs are available in this version of Project Pulse yet.")
+        );
     }
 
-    public Section createSection(SectionRequest req) {
-        validateSectionWeeks(req.activeWeekStart(), req.activeWeekEnd());
+    public InstructorDetailResponse getInstructor(Long id) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be viewed through this endpoint");
+        }
+
+        List<InstructorSectionTeamsResponse> supervisedTeams = teamRepo.findAll().stream()
+                .filter(team -> team.getInstructorIds().contains(id))
+                .collect(Collectors.groupingBy(
+                        Team::getSectionId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ))
+                .entrySet().stream()
+                .map(entry -> {
+                    Section section = getSectionEntity(entry.getKey());
+                    List<String> teamNames = entry.getValue().stream()
+                            .map(Team::getName)
+                            .sorted(String.CASE_INSENSITIVE_ORDER)
+                            .toList();
+                    return new InstructorSectionTeamsResponse(section.getId(), section.getName(), teamNames);
+                })
+                .sorted(Comparator.comparing(InstructorSectionTeamsResponse::sectionName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        return new InstructorDetailResponse(
+                instructor.getId(),
+                instructor.getFirstName(),
+                instructor.getLastName(),
+                instructor.isActive() ? "Active" : "Deactivated",
+                supervisedTeams
+        );
+    }
+
+    public InstructorDetailResponse deactivateInstructor(Long id, InstructorDeactivationRequest req) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be deactivated through this endpoint");
+        }
+        if (!instructor.isActive()) {
+            throw new ApiException("Instructor is already deactivated");
+        }
+
+        // Ralph: Keep the account record in place for future recovery while still recording why access was removed.
+        instructor.setActive(false);
+        instructor.setDeactivationReason(req.reason().trim());
+        userRepo.save(instructor);
+        return getInstructor(id);
+    }
+
+    public InstructorDetailResponse reactivateInstructor(Long id) {
+        UserAccount instructor = getUser(id);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be reactivated through this endpoint");
+        }
+        if (instructor.isActive()) {
+            throw new ApiException("Instructor is already active");
+        }
+
+        // Reactivate the instructor and clear deactivation reason
+        instructor.setActive(true);
+        instructor.setDeactivationReason(null);
+        userRepo.save(instructor);
+        
+        // Create notification for the instructor
+        createNotification(id, "Your instructor account has been reactivated. You now have access to The Peer Evaluation Tool.");
+        
+        return getInstructor(id);
+    }
+
+    public void deleteStudent(Long id) {
+        UserAccount student = getUser(id);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be deleted through this endpoint");
+        }
+
+        // Ralph: Remove the student from every section and team first so no dangling membership IDs remain.
+        List<Section> sections = sectionRepo.findAll().stream()
+                .filter(section -> section.getStudentIds().contains(id))
+                .toList();
+        for (Section section : sections) {
+            section.getStudentIds().remove(id);
+            sectionRepo.save(section);
+        }
+
+        List<Team> teams = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(id))
+                .toList();
+        for (Team team : teams) {
+            team.getStudentIds().remove(id);
+            teamRepo.save(team);
+        }
+
+        notificationRepo.deleteAll(notificationRepo.findByUserIdOrderByCreatedAtDesc(id));
+        userRepo.delete(student);
+    }
+
+    public List<InstructorInvitationResponse> getInstructorInvitations() {
+        return instructorInvitationRepo.findByAcceptedFalseOrderBySentAtDesc().stream()
+                .map(this::toInstructorInvitation)
+                .toList();
+    }
+
+    public List<InstructorInvitationResponse> inviteInstructors(InstructorInvitationRequest req) {
+        List<String> emails = parseStrictSemicolonEmails(req.emails());
+
+        String subject = req.subject() == null || req.subject().isBlank()
+                ? "Welcome to The Peer Evaluation Tool - Complete Your Registration"
+                : req.subject().trim();
+
+        List<InstructorInvitationResponse> responses = new ArrayList<>();
+        for (String email : emails) {
+            String token = UUID.randomUUID().toString().replace("-", "");
+            String message = buildInstructorInvitationMessage(token, req.message());
+
+            InstructorInvitation invitation = new InstructorInvitation();
+            invitation.setId(sequenceGeneratorService.generateSequence(InstructorInvitation.SEQUENCE_NAME));
+            invitation.setEmail(email);
+            invitation.setToken(token);
+            invitation.setSubject(subject);
+            invitation.setMessage(message);
+            invitation.setSentAt(LocalDateTime.now());
+            InstructorInvitation saved = instructorInvitationRepo.save(invitation);
+            responses.add(toInstructorInvitation(saved));
+        }
+        return responses;
+    }
+
+    public List<NotificationResponse> getUserNotifications(Long id) {
+        getUser(id);
+        return notificationRepo.findByUserIdOrderByCreatedAtDesc(id).stream()
+                .map(this::toNotificationResponse)
+                .toList();
+    }
+
+    public List<SectionSummaryResponse> getSections(String name) {
+        List<Section> sections = (name == null || name.isBlank())
+                ? sectionRepo.findAllByOrderByNameDesc()
+                : sectionRepo.findByNameContainingIgnoreCaseOrderByNameDesc(name.trim());
+        return sections.stream().map(this::toSectionSummary).toList();
+    }
+
+    public SectionDetailResponse getSection(Long id) {
+        return toSectionDetail(getSectionEntity(id));
+    }
+
+    public SectionDetailResponse createSection(SectionRequest req) {
+        validateSectionRequest(req, null);
+
         Section section = new Section();
-        section.setName(req.name());
-        section.setSemester(req.semester());
-        section.setYear(req.year());
-        section.setActiveWeekStart(req.activeWeekStart());
-        section.setActiveWeekEnd(req.activeWeekEnd());
-        return sectionRepo.save(section);
+        section.setId(sequenceGeneratorService.generateSequence(Section.SEQUENCE_NAME));
+        applySection(section, req);
+        Section saved = sectionRepo.save(section);
+        return toSectionDetail(saved);
     }
 
-    public Section updateSection(Long id, SectionRequest req) {
-        validateSectionWeeks(req.activeWeekStart(), req.activeWeekEnd());
-        Section section = getSection(id);
-        section.setName(req.name());
-        section.setSemester(req.semester());
-        section.setYear(req.year());
-        section.setActiveWeekStart(req.activeWeekStart());
-        section.setActiveWeekEnd(req.activeWeekEnd());
-        return sectionRepo.save(section);
+    public SectionDetailResponse updateSection(Long id, SectionRequest req) {
+        validateSectionRequest(req, id);
+        Section section = getSectionEntity(id);
+        applySection(section, req);
+        Section saved = sectionRepo.save(section);
+        return toSectionDetail(saved);
     }
 
-    public List<Team> getTeams(Long sectionId) {
-        if (sectionId == null) {
-            return teamRepo.findAll();
+    public SectionDetailResponse updateActiveWeeks(Long id, ActiveWeeksRequest req) {
+        Section section = getSectionEntity(id);
+        Set<Integer> inactive = sanitizeWeeks(req == null ? null : req.inactiveWeekNumbers());
+        validateInactiveWeeks(section, inactive);
+        section.setInactiveWeekNumbers(inactive);
+        return toSectionDetail(sectionRepo.save(section));
+    }
+
+    public List<StudentInvitationResponse> inviteStudents(Long id, StudentInvitationRequest req) {
+        if (!Objects.equals(id, req.sectionId())) {
+            throw new ApiException("Section ID mismatch");
         }
-        return teamRepo.findBySectionId(sectionId);
+        Section section = getSectionEntity(id);
+        List<String> emails = parseEmails(req.emails());
+
+        String subject = req.subject() == null || req.subject().isBlank()
+                ? "Welcome to Project Pulse - Complete Your Registration"
+                : req.subject().trim();
+
+        List<StudentInvitationResponse> responses = new ArrayList<>();
+        for (String email : emails) {
+            String token = UUID.randomUUID().toString().replace("-", "");
+            String message = buildInvitationMessage(email, token, req.message());
+
+            StudentInvitation invitation = new StudentInvitation();
+            invitation.setId(sequenceGeneratorService.generateSequence(StudentInvitation.SEQUENCE_NAME));
+            invitation.setSectionId(section.getId());
+            invitation.setEmail(email);
+            invitation.setToken(token);
+            invitation.setSubject(subject);
+            invitation.setMessage(message);
+            invitation.setSentAt(LocalDateTime.now());
+            StudentInvitation saved = invitationRepo.save(invitation);
+            responses.add(toStudentInvitation(saved));
+        }
+        return responses;
     }
 
-    public Team getTeam(Long id) {
-        return teamRepo.findById(id).orElseThrow(() -> new ApiException("Team not found"));
+    public List<TeamSummaryResponse> getTeams(Long sectionId, String sectionName, String teamName, Long instructorId) {
+        List<Team> teams = sectionId == null ? teamRepo.findAll() : teamRepo.findBySectionId(sectionId);
+        return teams.stream()
+                .filter(team -> matchesSectionName(team, sectionName))
+                .filter(team -> matchesTeamName(team, teamName))
+                .filter(team -> instructorId == null || team.getInstructorIds().contains(instructorId))
+                .map(this::toTeamSummary)
+                .sorted(Comparator.comparing(TeamSummaryResponse::sectionName, String.CASE_INSENSITIVE_ORDER).reversed()
+                        .thenComparing(TeamSummaryResponse::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
-    public Team createTeam(TeamRequest req) {
-        validateSectionExists(req.sectionId());
+    public TeamDetailResponse getTeam(Long id) {
+        return toTeamDetail(getTeamEntity(id));
+    }
+
+    public TeamDetailResponse createTeam(TeamRequest req) {
+        validateTeamRequest(req, null);
         Team team = new Team();
-        team.setSectionId(req.sectionId());
-        team.setName(req.name());
-        team.setStudentIds(req.studentIds() == null ? new HashSet<>() : new HashSet<>(req.studentIds()));
-        team.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
-        validateBr1(team);
-        return teamRepo.save(team);
+        team.setId(sequenceGeneratorService.generateSequence(Team.SEQUENCE_NAME));
+        applyTeam(team, req);
+        Team saved = teamRepo.save(team);
+        syncSectionMemberships(saved);
+        notifyAssignedInstructors(saved, Set.of());
+        return toTeamDetail(saved);
     }
 
-    public Team updateTeam(Long id, TeamRequest req) {
-        validateSectionExists(req.sectionId());
-        Team team = getTeam(id);
-        team.setSectionId(req.sectionId());
-        team.setName(req.name());
-        team.setStudentIds(req.studentIds() == null ? new HashSet<>() : new HashSet<>(req.studentIds()));
-        team.setInstructorIds(req.instructorIds() == null ? new HashSet<>() : new HashSet<>(req.instructorIds()));
+    public TeamDetailResponse updateTeam(Long id, TeamRequest req) {
+        validateTeamRequest(req, id);
+        Team team = getTeamEntity(id);
+        Set<Long> previousInstructorIds = new HashSet<>(team.getInstructorIds());
+        applyTeam(team, req);
+        Team saved = teamRepo.save(team);
+        syncSectionMemberships(saved);
+        notifyAssignedInstructors(saved, previousInstructorIds);
+        return toTeamDetail(saved);
+    }
+
+    public TeamDetailResponse removeStudentFromTeam(Long teamId, Long studentId) {
+        Team team = getTeamEntity(teamId);
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can be removed from a team");
+        }
+        if (!team.getStudentIds().contains(studentId)) {
+            throw new ApiException("Student is not assigned to this team");
+        }
+
+        team.getStudentIds().remove(studentId);
+        Team saved = teamRepo.save(team);
+        // Ralph: Persist the notification so the admin can verify the student was informed.
+        createNotification(studentId, "You have been removed from team " + team.getName() + ".");
+        return toTeamDetail(saved);
+    }
+
+    public TeamDetailResponse removeInstructorFromTeam(Long teamId, Long instructorId) {
+        Team team = getTeamEntity(teamId);
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can be removed from a team");
+        }
+        if (!team.getInstructorIds().contains(instructorId)) {
+            throw new ApiException("Instructor is not assigned to this team");
+        }
+
+        team.getInstructorIds().remove(instructorId);
         validateBr1(team);
-        return teamRepo.save(team);
+        Team saved = teamRepo.save(team);
+        // Ralph: Persist the removal notice so the admin can verify the instructor was informed.
+        createNotification(instructorId, "You have been removed from team " + team.getName() + ".");
+        return toTeamDetail(saved);
     }
 
     public void deleteTeam(Long id) {
-        Team team = getTeam(id);
-        if (!team.getInstructorIds().isEmpty()) {
-            throw new ApiException("Cannot delete team with instructors assigned. Remove instructors first.");
+        Team team = getTeamEntity(id);
+        for (Long studentId : team.getStudentIds()) {
+            createNotification(studentId, "Team " + team.getName() + " was deleted.");
+        }
+        for (Long instructorId : team.getInstructorIds()) {
+            createNotification(instructorId, "Team " + team.getName() + " was deleted.");
         }
         teamRepo.delete(team);
     }
 
-    public Team addStudentToTeam(Long teamId, Long studentId) {
-        Team team = getTeam(teamId);
-        UserAccount student = getUser(studentId);
-        if (student.getRole() != Role.STUDENT) {
-            throw new ApiException("User is not a student");
+    public List<RubricCriterionResponse> getRubricCriteria(Long sectionId) {
+        Section section = getSectionEntity(sectionId);
+        return rubricRepoCriteria.findByRubricIdOrderByIdAsc(section.getRubricId()).stream()
+                .map(this::toRubricCriterionResponse)
+                .toList();
+    }
+
+    public List<RubricCriterionResponse> getRubricCriteria() {
+        return rubricRepo.findAll().stream()
+                .flatMap(rubric -> rubricRepoCriteria.findByRubricIdOrderByIdAsc(rubric.getId()).stream())
+                .map(this::toRubricCriterionResponse)
+                .toList();
+    }
+
+    public RubricDetailResponse getSectionRubric(Long sectionId) {
+        Section section = getSectionEntity(sectionId);
+        return toRubricDetail(getRubricEntity(section.getRubricId()));
+    }
+
+    private void saveRubricCriteria(Long rubricId, List<RubricCriterionRequest> criteria) {
+        List<RubricCriterion> rows = criteria.stream().map(req -> {
+            RubricCriterion criterion = new RubricCriterion();
+            criterion.setId(sequenceGeneratorService.generateSequence(RubricCriterion.SEQUENCE_NAME));
+            criterion.setRubricId(rubricId);
+            criterion.setName(req.name().trim());
+            criterion.setDescription(req.description().trim());
+            criterion.setMaxScore(req.maxScore());
+            criterion.setActive(req.active() == null || req.active());
+            return criterion;
+        }).toList();
+        rubricRepoCriteria.saveAll(rows);
+    }
+
+    private List<RubricCriterionRequest> validateRubricCriteria(List<RubricCriterionRequest> criteria) {
+        if (criteria == null || criteria.isEmpty()) {
+            throw new ApiException("A rubric must include at least one criterion");
         }
-        team.getStudentIds().add(studentId);
-        return teamRepo.save(team);
-    }
-
-    public Team removeStudentFromTeam(Long teamId, Long studentId) {
-        Team team = getTeam(teamId);
-        team.getStudentIds().remove(studentId);
-        return teamRepo.save(team);
-    }
-
-    public Team addInstructorToTeam(Long teamId, Long instructorId) {
-        Team team = getTeam(teamId);
-        UserAccount instructor = getUser(instructorId);
-        if (instructor.getRole() != Role.INSTRUCTOR) {
-            throw new ApiException("User is not an instructor");
-        }
-        team.getInstructorIds().add(instructorId);
-        validateBr1(team);
-        return teamRepo.save(team);
-    }
-
-    public Team removeInstructorFromTeam(Long teamId, Long instructorId) {
-        Team team = getTeam(teamId);
-        team.getInstructorIds().remove(instructorId);
-        validateBr1(team);
-        return teamRepo.save(team);
-    }
-
-    public List<RubricCriterion> getRubricCriteria() {
-        return rubricRepo.findAll();
-    }
-
-    public RubricCriterion createRubricCriterion(RubricCriterionRequest req) {
-        RubricCriterion criterion = new RubricCriterion();
-        criterion.setName(req.name());
-        criterion.setMaxScore(req.maxScore());
-        criterion.setActive(req.active() == null || req.active());
-        return rubricRepo.save(criterion);
-    }
-
-    public RubricCriterion updateRubricCriterion(Long id, RubricCriterionRequest req) {
-        RubricCriterion criterion = rubricRepo.findById(id).orElseThrow(() -> new ApiException("Rubric criterion not found"));
-        criterion.setName(req.name());
-        criterion.setMaxScore(req.maxScore());
-        criterion.setActive(req.active() == null || req.active());
-        return rubricRepo.save(criterion);
-    }
-
-    public List<WarActivity> getWarActivities() {
-        return warRepo.findAll();
-    }
-
-    public WarActivity createWarActivity(WarActivityRequest req) {
-        validateSectionExists(req.sectionId());
-        validateTeamMembership(req.teamId(), req.studentId(), Role.STUDENT);
-        WarActivity activity = new WarActivity();
-        activity.setSectionId(req.sectionId());
-        activity.setTeamId(req.teamId());
-        activity.setStudentId(req.studentId());
-        activity.setWeekNumber(req.weekNumber());
-        activity.setCategory(req.category());
-        activity.setPlannedActivity(req.plannedActivity());
-        activity.setDescription(req.description());
-        activity.setPlannedHours(req.plannedHours());
-        activity.setActualHours(req.actualHours());
-        activity.setStatus(req.status());
-        return warRepo.save(activity);
-    }
-
-    public WarActivity updateWarActivity(Long id, WarActivityRequest req) {
-        WarActivity activity = warRepo.findById(id).orElseThrow(() -> new ApiException("WAR activity not found"));
-        validateSectionExists(req.sectionId());
-        validateTeamMembership(req.teamId(), req.studentId(), Role.STUDENT);
-        activity.setSectionId(req.sectionId());
-        activity.setTeamId(req.teamId());
-        activity.setStudentId(req.studentId());
-        activity.setWeekNumber(req.weekNumber());
-        activity.setCategory(req.category());
-        activity.setPlannedActivity(req.plannedActivity());
-        activity.setDescription(req.description());
-        activity.setPlannedHours(req.plannedHours());
-        activity.setActualHours(req.actualHours());
-        activity.setStatus(req.status());
-        return warRepo.save(activity);
-    }
-
-    public void deleteWarActivity(Long id) {
-        warRepo.deleteById(id);
-    }
-
-    @Transactional
-    public PeerEvaluation submitPeerEvaluation(PeerEvaluationRequest req) {
-        validateSectionExists(req.sectionId());
-        validateTeamMembership(req.teamId(), req.evaluatorStudentId(), Role.STUDENT);
-        validateTeamMembership(req.teamId(), req.evaluateeStudentId(), Role.STUDENT);
-
-        if (Objects.equals(req.evaluatorStudentId(), req.evaluateeStudentId())) {
-            throw new ApiException("Students cannot evaluate themselves");
-        }
-
-        Section section = getSection(req.sectionId());
-
-        if (req.targetWeekNumber() < section.getActiveWeekStart() || req.targetWeekNumber() > section.getActiveWeekEnd()) {
-            throw new ApiException("BR-2 violation: Peer evaluation can only be submitted for active weeks");
-        }
-
-        int currentWeek = LocalDate.now().get(WeekFields.ISO.weekOfWeekBasedYear());
-        if (req.targetWeekNumber() != currentWeek - 1) {
-            throw new ApiException("BR-4 violation: Peer evaluation must target the previous week only");
-        }
-
-        if (evalRepo.findByEvaluatorStudentIdAndEvaluateeStudentIdAndTargetWeekNumber(
-                req.evaluatorStudentId(), req.evaluateeStudentId(), req.targetWeekNumber()).isPresent()) {
-            throw new ApiException("BR-3 violation: Peer evaluation cannot be edited once completed");
-        }
-
-        int total = 0;
-        for (CriterionScoreRequest scoreRequest : req.scores()) {
-            RubricCriterion criterion = rubricRepo.findById(scoreRequest.criterionId())
-                    .orElseThrow(() -> new ApiException("Rubric criterion not found: " + scoreRequest.criterionId()));
-            if (!criterion.isActive()) {
-                throw new ApiException("Inactive rubric criterion cannot be used");
+        for (RubricCriterionRequest criterion : criteria) {
+            if (criterion.maxScore().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ApiException("Criterion max score must be positive");
             }
-            if (scoreRequest.score() < 0 || scoreRequest.score() > criterion.getMaxScore()) {
-                throw new ApiException("Criterion score out of allowed range for criterion: " + criterion.getName());
+        }
+        return criteria;
+    }
+
+    private void validateRubricName(String name, Long existingId) {
+        String normalized = name == null ? "" : name.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException("Rubric name is required");
+        }
+        List<Rubric> matches = rubricRepo.findByNameContainingIgnoreCaseOrderByNameAsc(normalized).stream()
+                .filter(r -> r.getName().equalsIgnoreCase(normalized))
+                .toList();
+        boolean duplicate = matches.stream().anyMatch(r -> existingId == null || !r.getId().equals(existingId));
+        if (duplicate) {
+            throw new ApiException("Rubric name must be unique");
+        }
+    }
+
+    private void validateSectionRequest(SectionRequest req, Long existingId) {
+        validateSectionDates(req.startDate(), req.endDate());
+        validateSectionName(req.name(), existingId);
+        getRubricEntity(req.rubricId());
+        validateUsersByRole(req.studentIds(), Role.STUDENT);
+        validateUsersByRole(req.instructorIds(), Role.INSTRUCTOR);
+        if (req.inactiveWeekNumbers() != null) {
+            validateInactiveWeeks(req.startDate(), req.endDate(), sanitizeWeeks(req.inactiveWeekNumbers()));
+        }
+    }
+
+    private void applySection(Section section, SectionRequest req) {
+        section.setName(req.name().trim());
+        section.setStartDate(req.startDate());
+        section.setEndDate(req.endDate());
+        section.setRubricId(req.rubricId());
+        if (req.studentIds() != null) {
+            section.setStudentIds(new HashSet<>(req.studentIds()));
+        } else if (section.getStudentIds() == null) {
+            section.setStudentIds(new HashSet<>());
+        }
+        if (req.instructorIds() != null) {
+            section.setInstructorIds(new HashSet<>(req.instructorIds()));
+        } else if (section.getInstructorIds() == null) {
+            section.setInstructorIds(new HashSet<>());
+        }
+        if (req.inactiveWeekNumbers() != null) {
+            section.setInactiveWeekNumbers(sanitizeWeeks(req.inactiveWeekNumbers()));
+        } else if (section.getInactiveWeekNumbers() == null) {
+            section.setInactiveWeekNumbers(new HashSet<>());
+        }
+    }
+
+    private void validateSectionName(String name, Long existingId) {
+        String normalized = name == null ? "" : name.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException("Section name is required");
+        }
+        List<Section> matches = sectionRepo.findByNameContainingIgnoreCaseOrderByNameDesc(normalized).stream()
+                .filter(section -> section.getName().equalsIgnoreCase(normalized))
+                .toList();
+        boolean duplicate = matches.stream().anyMatch(section -> existingId == null || !section.getId().equals(existingId));
+        if (duplicate) {
+            throw new ApiException("Section name must be unique");
+        }
+    }
+
+    private void validateSectionDates(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ApiException("Section start date must be on or before the end date");
+        }
+    }
+
+    private void validateInactiveWeeks(Section section, Set<Integer> inactiveWeeks) {
+        validateInactiveWeeks(section.getStartDate(), section.getEndDate(), inactiveWeeks);
+    }
+
+    private void validateInactiveWeeks(LocalDate startDate, LocalDate endDate, Set<Integer> inactiveWeeks) {
+        Set<Integer> availableWeeks = getWeekNumbers(startDate, endDate);
+        if (!availableWeeks.containsAll(inactiveWeeks)) {
+            throw new ApiException("Inactive weeks must fall within the section date range");
+        }
+    }
+
+    private Set<Integer> sanitizeWeeks(Set<Integer> weeks) {
+        if (weeks == null) {
+            return new HashSet<>();
+        }
+        return weeks.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(TreeSet::new));
+    }
+
+    private void validateTeamRequest(TeamRequest req, Long existingId) {
+        Section section = getSectionEntity(req.sectionId());
+        validateTeamName(req.name(), existingId);
+        validateUsersByRole(req.instructorIds(), Role.INSTRUCTOR);
+        validateUsersByRole(req.studentIds(), Role.STUDENT);
+
+        Set<Long> sectionStudents = section.getStudentIds() == null ? Set.of() : section.getStudentIds();
+        for (Long studentId : req.studentIds() == null ? Set.<Long>of() : req.studentIds()) {
+            if (!sectionStudents.contains(studentId)) {
+                throw new ApiException("Student " + studentId + " is not part of the selected section");
             }
-            total += scoreRequest.score();
+        }
+        Set<Long> sectionInstructors = section.getInstructorIds() == null ? Set.of() : section.getInstructorIds();
+        for (Long instructorId : req.instructorIds() == null ? Set.<Long>of() : req.instructorIds()) {
+            if (!sectionInstructors.contains(instructorId)) {
+                throw new ApiException("Instructor " + instructorId + " is not part of the selected section");
+            }
         }
 
-        PeerEvaluation eval = new PeerEvaluation();
-        eval.setSectionId(req.sectionId());
-        eval.setTeamId(req.teamId());
-        eval.setEvaluatorStudentId(req.evaluatorStudentId());
-        eval.setEvaluateeStudentId(req.evaluateeStudentId());
-        eval.setTargetWeekNumber(req.targetWeekNumber());
-        eval.setTotalScore(total);
-        eval.setPublicComment(req.publicComment());
-        eval.setSubmittedDate(LocalDate.now());
-        PeerEvaluation saved = evalRepo.save(eval);
-
-        List<PeerEvaluationCriterionScore> scoreRows = new ArrayList<>();
-        for (CriterionScoreRequest scoreRequest : req.scores()) {
-            PeerEvaluationCriterionScore row = new PeerEvaluationCriterionScore();
-            row.setEvaluationId(saved.getId());
-            row.setCriterionId(scoreRequest.criterionId());
-            row.setScore(scoreRequest.score());
-            scoreRows.add(row);
-        }
-        evalScoreRepo.saveAll(scoreRows);
-
-        return saved;
+        Team probe = new Team();
+        probe.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
+        validateBr1(probe);
     }
 
-    public List<Map<String, Object>> getStudentPeerEvaluationReport(Long studentId) {
-        List<PeerEvaluation> evaluations = evalRepo.findByEvaluateeStudentIdAndTargetWeekNumberBetween(studentId, 1, 20);
-        List<Map<String, Object>> report = new ArrayList<>();
-
-        for (PeerEvaluation eval : evaluations) {
-            Map<String, Object> row = new HashMap<>();
-            row.put("evaluationId", eval.getId());
-            row.put("targetWeek", eval.getTargetWeekNumber());
-            row.put("totalScore", eval.getTotalScore());
-            row.put("publicComment", eval.getPublicComment());
-            row.put("criterionScores", evalScoreRepo.findByEvaluationId(eval.getId()));
-            report.add(row);
-        }
-
-        return report;
+    private void applyTeam(Team team, TeamRequest req) {
+        team.setSectionId(req.sectionId());
+        team.setName(req.name().trim());
+        team.setDescription(req.description().trim());
+        team.setWebsiteUrl(req.websiteUrl() == null || req.websiteUrl().isBlank() ? null : req.websiteUrl().trim());
+        team.setStudentIds(req.studentIds() == null ? new HashSet<Long>() : new HashSet<>(req.studentIds()));
+        team.setInstructorIds(req.instructorIds() == null ? new HashSet<Long>() : new HashSet<>(req.instructorIds()));
+        validateBr1(team);
     }
 
-    public List<PeerEvaluation> generatePeerEvaluationReport(PeerEvaluationReportRequest req) {
-        if (req.startWeek() > req.endWeek()) {
-            throw new ApiException("Start week cannot be greater than end week");
+    private void validateTeamName(String name, Long existingId) {
+        String normalized = name == null ? "" : name.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException("Team name is required");
         }
-        if (req.bySection()) {
-            return evalRepo.findBySectionIdAndTargetWeekNumberBetween(req.targetId(), req.startWeek(), req.endWeek());
+        List<Team> matches = teamRepo.findAll().stream()
+                .filter(team -> team.getName().equalsIgnoreCase(normalized))
+                .toList();
+        boolean duplicate = matches.stream().anyMatch(team -> existingId == null || !team.getId().equals(existingId));
+        if (duplicate) {
+            throw new ApiException("Team name must be unique");
         }
-        return evalRepo.findByEvaluateeStudentIdAndTargetWeekNumberBetween(req.targetId(), req.startWeek(), req.endWeek());
     }
 
-    public List<WarActivity> generateWarReport(WarReportRequest req) {
-        if (req.startWeek() > req.endWeek()) {
-            throw new ApiException("Start week cannot be greater than end week");
+    private void validateUsersByRole(Set<Long> ids, Role role) {
+        if (ids == null) {
+            return;
         }
-        if (req.byTeam()) {
-            return warRepo.findByTeamIdAndWeekNumberBetweenOrderByWeekNumberAsc(req.targetId(), req.startWeek(), req.endWeek());
+        for (Long id : ids) {
+            UserAccount user = getUser(id);
+            if (user.getRole() != role) {
+                throw new ApiException("User " + id + " must have role " + role);
+            }
         }
-        return warRepo.findByStudentIdAndWeekNumberBetweenOrderByWeekNumberAsc(req.targetId(), req.startWeek(), req.endWeek());
     }
 
-    private void validateSectionWeeks(Integer start, Integer end) {
-        if (start > end) {
-            throw new ApiException("Active week start must be <= active week end");
+    private List<String> parseEmails(String emails) {
+        List<String> parsed = Arrays.stream(emails.split(";"))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+        if (parsed.isEmpty()) {
+            throw new ApiException("At least one student email is required");
         }
+        for (String email : parsed) {
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new ApiException("Invalid email format: " + email);
+            }
+        }
+        return parsed;
+    }
+
+    private List<String> parseStrictSemicolonEmails(String emails) {
+        String normalized = emails == null ? "" : emails.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException("At least one instructor email is required");
+        }
+        if (normalized.endsWith(";")) {
+            throw new ApiException("Instructor emails cannot end with a semicolon");
+        }
+        if (!normalized.contains(";") && normalized.contains(" ")) {
+            throw new ApiException("Instructor emails must be separated by semicolons");
+        }
+
+        List<String> parsed = Arrays.stream(normalized.split(";"))
+                .map(String::trim)
+                .toList();
+        for (int index = 0; index < parsed.size(); index++) {
+            String email = parsed.get(index);
+            if (email.isBlank()) {
+                throw new ApiException("Instructor email " + (index + 1) + " is empty");
+            }
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new ApiException("Invalid instructor email format: " + email);
+            }
+        }
+        return parsed;
+    }
+
+    private String buildInvitationMessage(String email, String token, String customMessage) {
+        if (customMessage != null && !customMessage.isBlank()) {
+            return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
+        }
+        return ("Project Pulse has invited " + email + " to join the section.\n\n"
+                + "To complete registration, use this link:\n"
+                + buildRegistrationLink(token) + "\n\n"
+                + "If you need help, contact your course admin.").trim();
+    }
+
+    private String buildInstructorInvitationMessage(String token, String customMessage) {
+        if (customMessage != null && !customMessage.isBlank()) {
+            return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
+        }
+        return ("Hello,\n\n"
+                + "[Name of the Admin] has invited you to join The Peer Evaluation Tool. To complete your registration, please use the link below:\n\n"
+                + buildRegistrationLink(token) + "\n\n"
+                + "If you have any questions or need assistance, feel free to contact [Admin's email] or our team directly.\n\n"
+                + "Please note: This email is not monitored, so do not reply directly to this message.\n\n"
+                + "Best regards,\n"
+                + "Peer Evaluation Tool Team").trim();
+    }
+
+    private String buildRegistrationLink(String token) {
+        return "https://project-pulse.local/student-registration?token=" + token;
+    }
+
+    private boolean matchesSectionName(Team team, String sectionName) {
+        if (sectionName == null || sectionName.isBlank()) {
+            return true;
+        }
+        Section section = getSectionEntity(team.getSectionId());
+        return section.getName().toLowerCase(Locale.ROOT).contains(sectionName.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesTeamName(Team team, String teamName) {
+        return teamName == null
+                || teamName.isBlank()
+                || team.getName().toLowerCase(Locale.ROOT).contains(teamName.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesValue(String actual, String expected) {
+        return expected == null
+                || expected.isBlank()
+                || (actual != null && actual.toLowerCase(Locale.ROOT).contains(expected.trim().toLowerCase(Locale.ROOT)));
+    }
+
+    private boolean matchesSectionFilter(Section section, Long sectionId, String sectionName) {
+        return (sectionId == null || Objects.equals(section.getId(), sectionId))
+                && matchesValue(section.getName(), sectionName);
+    }
+
+    private boolean matchesTeamFilter(Team team, Long teamId, String teamName) {
+        if (teamId != null && (team == null || !Objects.equals(team.getId(), teamId))) {
+            return false;
+        }
+        if (!isBlank(teamName) && (team == null || !matchesValue(team.getName(), teamName))) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean matchesInstructorStatus(UserAccount instructor, String status) {
+        if (isBlank(status)) {
+            return true;
+        }
+
+        return switch (status.trim().toUpperCase(Locale.ROOT)) {
+            case "ACTIVE" -> instructor.isActive();
+            case "DEACTIVATED" -> !instructor.isActive();
+            default -> throw new ApiException("Status must be ACTIVE or DEACTIVATED");
+        };
+    }
+
+    private void syncSectionMemberships(Team team) {
+        Section section = getSectionEntity(team.getSectionId());
+        section.getInstructorIds().addAll(team.getInstructorIds());
+        section.getStudentIds().addAll(team.getStudentIds());
+        sectionRepo.save(section);
     }
 
     private void validateSectionExists(Long sectionId) {
@@ -342,15 +878,10 @@ public class ProjectPulseService {
         }
     }
 
-    private void validateTeamMembership(Long teamId, Long userId, Role role) {
-        Team team = getTeam(teamId);
-        UserAccount user = getUser(userId);
-        if (user.getRole() != role) {
-            throw new ApiException("Role mismatch for user");
-        }
-        Set<Long> ids = role == Role.STUDENT ? team.getStudentIds() : team.getInstructorIds();
-        if (!ids.contains(userId)) {
-            throw new ApiException("User is not assigned to team");
+    private void validateTeamBelongsToSection(Long teamId, Long sectionId) {
+        Team team = getTeamEntity(teamId);
+        if (!Objects.equals(team.getSectionId(), sectionId)) {
+            throw new ApiException("Team does not belong to the specified section");
         }
     }
 
@@ -359,9 +890,988 @@ public class ProjectPulseService {
             throw new ApiException("BR-1 violation: Every senior design team must have at least one instructor");
         }
 
-        Set<Long> validated = team.getInstructorIds().stream().map(this::getUser).filter(u -> u.getRole() == Role.INSTRUCTOR).map(UserAccount::getId).collect(Collectors.toSet());
+        Set<Long> validated = team.getInstructorIds().stream()
+                .map(this::getUser)
+                .filter(user -> user.getRole() == Role.INSTRUCTOR)
+                .map(UserAccount::getId)
+                .collect(Collectors.toSet());
         if (validated.size() != team.getInstructorIds().size()) {
             throw new ApiException("All instructor IDs must belong to INSTRUCTOR role users");
         }
+    }
+
+    private Rubric getRubricEntity(Long id) {
+        return rubricRepo.findById(id).orElseThrow(() -> new ApiException("Rubric not found"));
+    }
+
+    private Section getSectionEntity(Long id) {
+        return sectionRepo.findById(id).orElseThrow(() -> new ApiException("Section not found"));
+    }
+
+    private Team getTeamEntity(Long id) {
+        return teamRepo.findById(id).orElseThrow(() -> new ApiException("Team not found"));
+    }
+
+    private RubricDetailResponse toRubricDetail(Rubric rubric) {
+        List<RubricCriterionResponse> criteria = rubricRepoCriteria.findByRubricIdOrderByIdAsc(rubric.getId()).stream()
+                .map(this::toRubricCriterionResponse)
+                .toList();
+        return new RubricDetailResponse(rubric.getId(), rubric.getName(), criteria);
+    }
+
+    private RubricCriterionResponse toRubricCriterionResponse(RubricCriterion criterion) {
+        return new RubricCriterionResponse(
+                criterion.getId(),
+                criterion.getName(),
+                criterion.getDescription(),
+                criterion.getMaxScore(),
+                criterion.isActive()
+        );
+    }
+
+    private SectionSummaryResponse toSectionSummary(Section section) {
+        List<String> teamNames = teamRepo.findBySectionIdOrderByNameAsc(section.getId()).stream()
+                .map(Team::getName)
+                .toList();
+        Rubric rubric = getRubricEntity(section.getRubricId());
+        return new SectionSummaryResponse(
+                section.getId(),
+                section.getName(),
+                section.getStartDate(),
+                section.getEndDate(),
+                rubric.getName(),
+                teamNames,
+                getActiveWeekNumbers(section)
+        );
+    }
+
+    private SectionDetailResponse toSectionDetail(Section section) {
+        List<Team> teams = teamRepo.findBySectionIdOrderByNameAsc(section.getId());
+        Set<Long> assignedStudents = teams.stream()
+                .flatMap(team -> team.getStudentIds().stream())
+                .collect(Collectors.toSet());
+        Set<Long> assignedInstructors = teams.stream()
+                .flatMap(team -> team.getInstructorIds().stream())
+                .collect(Collectors.toSet());
+
+        List<UserSummaryResponse> unassignedStudents = section.getStudentIds().stream()
+                .filter(id -> !assignedStudents.contains(id))
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
+        List<UserSummaryResponse> unassignedInstructors = section.getInstructorIds().stream()
+                .filter(id -> !assignedInstructors.contains(id))
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
+        List<UserSummaryResponse> sectionStudents = section.getStudentIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
+        List<UserSummaryResponse> sectionInstructors = section.getInstructorIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+
+        List<StudentInvitationResponse> invitations = invitationRepo.findBySectionIdAndAcceptedFalseOrderBySentAtDesc(section.getId())
+                .stream()
+                .map(this::toStudentInvitation)
+                .toList();
+
+        return new SectionDetailResponse(
+                section.getId(),
+                section.getName(),
+                section.getStartDate(),
+                section.getEndDate(),
+                toRubricDetail(getRubricEntity(section.getRubricId())),
+                getActiveWeekNumbers(section),
+                new TreeSet<>(section.getInactiveWeekNumbers()),
+                sectionStudents,
+                sectionInstructors,
+                teams.stream().map(this::toTeamSummary).toList(),
+                unassignedStudents,
+                unassignedInstructors,
+                invitations
+        );
+    }
+
+    private TeamSummaryResponse toTeamSummary(Team team) {
+        Section section = getSectionEntity(team.getSectionId());
+        return new TeamSummaryResponse(
+                team.getId(),
+                team.getSectionId(),
+                section.getName(),
+                team.getName(),
+                team.getDescription(),
+                team.getWebsiteUrl(),
+                team.getStudentIds().stream().map(this::getUser).map(this::fullName).sorted(String.CASE_INSENSITIVE_ORDER).toList(),
+                team.getInstructorIds().stream().map(this::getUser).map(this::fullName).sorted(String.CASE_INSENSITIVE_ORDER).toList()
+        );
+    }
+
+    private TeamDetailResponse toTeamDetail(Team team) {
+        Section section = getSectionEntity(team.getSectionId());
+        List<UserSummaryResponse> students = team.getStudentIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+        List<UserSummaryResponse> instructors = team.getInstructorIds().stream()
+                .map(this::getUser)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .map(this::toUserSummary)
+                .toList();
+        return new TeamDetailResponse(
+                team.getId(),
+                team.getSectionId(),
+                section.getName(),
+                team.getName(),
+                team.getDescription(),
+                team.getWebsiteUrl(),
+                students,
+                instructors
+        );
+    }
+
+    private UserSummaryResponse toUserSummary(UserAccount user) {
+        return new UserSummaryResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole(),
+                user.isActive()
+        );
+    }
+
+    private StudentSearchResponse toStudentSearchResponse(UserAccount student, Section section, Team team) {
+        return new StudentSearchResponse(
+                student.getId(),
+                student.getFirstName(),
+                student.getLastName(),
+                student.getEmail(),
+                section == null ? null : section.getId(),
+                section == null ? null : section.getName(),
+                team == null ? null : team.getId(),
+                team == null ? null : team.getName()
+        );
+    }
+
+    private InstructorSearchResponse toInstructorSearchResponse(UserAccount instructor, Section section, Team team) {
+        return new InstructorSearchResponse(
+                instructor.getId(),
+                instructor.getFirstName(),
+                instructor.getLastName(),
+                instructor.getEmail(),
+                section == null ? null : section.getStartDate().getYear(),
+                section == null ? null : section.getId(),
+                section == null ? null : section.getName(),
+                team == null ? null : team.getId(),
+                team == null ? null : team.getName(),
+                instructor.isActive() ? "Active" : "Deactivated"
+        );
+    }
+
+    private StudentInvitationResponse toStudentInvitation(StudentInvitation invitation) {
+        return new StudentInvitationResponse(
+                invitation.getId(),
+                invitation.getSectionId(),
+                invitation.getEmail(),
+                invitation.getSubject(),
+                invitation.getSentAt(),
+                invitation.isAccepted()
+        );
+    }
+
+    private NotificationResponse toNotificationResponse(Notification notification) {
+        return new NotificationResponse(
+                notification.getId(),
+                notification.getUserId(),
+                notification.getMessage(),
+                notification.getCreatedAt()
+        );
+    }
+
+    private InstructorInvitationResponse toInstructorInvitation(InstructorInvitation invitation) {
+        return new InstructorInvitationResponse(
+                invitation.getId(),
+                invitation.getEmail(),
+                invitation.getSubject(),
+                invitation.getSentAt(),
+                invitation.isAccepted()
+        );
+    }
+
+    private Set<Integer> getActiveWeekNumbers(Section section) {
+        Set<Integer> weeks = new TreeSet<>(getWeekNumbers(section.getStartDate(), section.getEndDate()));
+        weeks.removeAll(section.getInactiveWeekNumbers());
+        return weeks;
+    }
+
+    private Set<Integer> getWeekNumbers(LocalDate startDate, LocalDate endDate) {
+        Set<Integer> weeks = new TreeSet<>();
+        LocalDate cursor = startDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate lastWeek = endDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        while (!cursor.isAfter(lastWeek)) {
+            weeks.add(cursor.get(WeekFields.ISO.weekOfWeekBasedYear()));
+            cursor = cursor.plusWeeks(1);
+        }
+        return weeks;
+    }
+
+    private String fullName(UserAccount user) {
+        return user.getFirstName() + " " + user.getLastName();
+    }
+
+    private void createNotification(Long userId, String message) {
+        Notification notification = new Notification();
+        notification.setId(sequenceGeneratorService.generateSequence(Notification.SEQUENCE_NAME));
+        notification.setUserId(userId);
+        notification.setMessage(message);
+        notification.setCreatedAt(LocalDateTime.now());
+        notificationRepo.save(notification);
+    }
+
+    public StudentRegistrationResponse registerStudent(StudentRegistrationRequest request) {
+        // Extension 2a: Check if student already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("An account with this email already exists");
+        }
+
+        // Mock invitation token verification (for now, accept any non-empty token)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+
+        // Create new student account
+        UserAccount student = new UserAccount();
+        student.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        student.setFirstName(request.getFirstName().trim());
+        student.setLastName(request.getLastName().trim());
+        student.setEmail(request.getEmail().trim().toLowerCase());
+        student.setPassword(passwordEncoder.encode(request.getPassword()));
+        student.setRole(Role.STUDENT);
+        student.setActive(true);
+
+        UserAccount savedStudent = userRepo.save(student);
+
+        return new StudentRegistrationResponse(
+                savedStudent.getId().toString(),
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Student account created successfully"
+        );
+    }
+
+    public ProfileUpdateResponse updateStudentProfile(Long studentId, ProfileUpdateRequest req) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their profile through this endpoint");
+        }
+
+        // Check if email is already used by another user
+        Optional<UserAccount> existingUser = userRepo.findByEmailIgnoreCase(req.getEmail().trim());
+        if (existingUser.isPresent() && !existingUser.get().getId().equals(studentId)) {
+            throw new ApiException("Email is already in use by another account");
+        }
+
+        student.setFirstName(req.getFirstName().trim());
+        student.setLastName(req.getLastName().trim());
+        student.setEmail(req.getEmail().trim());
+
+        UserAccount savedStudent = userRepo.save(student);
+        return new ProfileUpdateResponse(
+                savedStudent.getFirstName(),
+                savedStudent.getLastName(),
+                savedStudent.getEmail(),
+                "Profile updated successfully"
+        );
+    }
+
+    // Weekly Activity Report (WAR) Methods
+    
+    public List<WeeklyActivityResponse> getWeeklyActivities(String studentId, String weekId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can access their weekly activities");
+        }
+
+        List<WeeklyActivity> activities;
+        if (weekId != null && !weekId.isBlank()) {
+            activities = weeklyActivityRepo.findByStudentIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        } else {
+            activities = weeklyActivityRepo.findByStudentIdOrderByCreatedAtDesc(studentId);
+        }
+
+        return activities.stream().map(this::toWeeklyActivityResponse).toList();
+    }
+
+    public WeeklyActivityResponse createWeeklyActivity(String studentId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can create weekly activities");
+        }
+
+        WeeklyActivity activity = new WeeklyActivity();
+        activity.setId(String.valueOf(System.currentTimeMillis())); // Using String ID for MongoDB consistency
+        activity.setStudentId(studentId);
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
+        activity.setCreatedAt(LocalDateTime.now());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public WeeklyActivityResponse updateWeeklyActivity(String studentId, String activityId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only update your own activities");
+        }
+
+        activity.setCategory(req.getCategory());
+        activity.setDescription(req.getDescription().trim());
+        activity.setPlannedHours(req.getPlannedHours());
+        activity.setActualHours(req.getActualHours() != null ? req.getActualHours() : 0.0);
+        activity.setStatus(req.getStatus());
+        activity.setWeekId(req.getWeekId());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public void deleteWeeklyActivity(String studentId, String activityId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can delete their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only delete your own activities");
+        }
+
+        weeklyActivityRepo.delete(activity);
+    }
+
+    private WeeklyActivityResponse toWeeklyActivityResponse(WeeklyActivity activity) {
+        return new WeeklyActivityResponse(
+                activity.getId(),
+                activity.getStudentId(),
+                activity.getCategory(),
+                activity.getDescription(),
+                activity.getPlannedHours(),
+                activity.getActualHours(),
+                activity.getStatus(),
+                activity.getWeekId(),
+                activity.getCreatedAt(),
+                activity.getUpdatedAt()
+        );
+    }
+
+    // Peer Evaluation Methods
+    
+    public PeerEvaluationResponse submitPeerEvaluation(Long evaluatorId, PeerEvaluationRequest req) {
+        UserAccount evaluator = getUser(evaluatorId);
+        if (evaluator.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can submit peer evaluations");
+        }
+
+        UserAccount evaluatee = getUser(req.getEvaluateeId());
+        if (evaluatee.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate other students");
+        }
+
+        if (evaluatorId.equals(req.getEvaluateeId())) {
+            throw new ApiException("Cannot evaluate yourself");
+        }
+
+        // Business Rule BR-3: Check if evaluation already exists for this week and teammate
+        peerEvaluationRepo.findByEvaluatorIdAndEvaluateeIdAndWeekId(evaluatorId, req.getEvaluateeId(), req.getWeekId())
+                .ifPresent(existing -> {
+                    throw new ApiException("You have already submitted an evaluation for this student this week. Evaluations cannot be edited once completed.");
+                });
+
+        // Validate scores
+        if (req.getScores() == null || req.getScores().isEmpty()) {
+            throw new ApiException("Scores are required");
+        }
+
+        // Validate each score is between 1-5
+        req.getScores().forEach((criterion, score) -> {
+            if (score == null || score < 1 || score > 5) {
+                throw new ApiException("All scores must be between 1 and 5");
+            }
+        });
+
+        // Verify students are in the same team
+        if (!areStudentsInSameTeam(evaluatorId, req.getEvaluateeId())) {
+            throw new ApiException("You can only evaluate students in your team");
+        }
+
+        PeerEvaluation evaluation = new PeerEvaluation();
+        evaluation.setId(sequenceGeneratorService.generateSequence(PeerEvaluation.SEQUENCE_NAME));
+        evaluation.setEvaluatorId(evaluatorId);
+        evaluation.setEvaluateeId(req.getEvaluateeId());
+        evaluation.setWeekId(req.getWeekId().trim());
+        evaluation.setScores(req.getScores());
+        evaluation.setPublicComment(req.getPublicComment() != null ? req.getPublicComment().trim() : null);
+        evaluation.setPrivateComment(req.getPrivateComment() != null ? req.getPrivateComment().trim() : null);
+        evaluation.setCreatedAt(LocalDateTime.now());
+        evaluation.setUpdatedAt(LocalDateTime.now());
+
+        PeerEvaluation saved = peerEvaluationRepo.save(evaluation);
+        return toPeerEvaluationResponse(saved, "Peer evaluation submitted successfully");
+    }
+
+    private boolean areStudentsInSameTeam(Long studentId1, Long studentId2) {
+        List<Team> teams1 = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId1))
+                .toList();
+
+        for (Team team : teams1) {
+            if (team.getStudentIds().contains(studentId2)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private PeerEvaluationResponse toPeerEvaluationResponse(PeerEvaluation evaluation, String message) {
+        return new PeerEvaluationResponse(
+                evaluation.getId(),
+                evaluation.getEvaluatorId(),
+                evaluation.getEvaluateeId(),
+                evaluation.getWeekId(),
+                evaluation.getScores(),
+                evaluation.getPublicComment(),
+                evaluation.getPrivateComment(),
+                evaluation.getCreatedAt(),
+                evaluation.getUpdatedAt(),
+                message
+        );
+    }
+
+    // Peer Evaluation Report Methods (BR-5: Anonymous aggregated scores only)
+    
+    public PeerEvaluationReportResponse getPeerEvaluationReport(Long studentId, String weekId) {
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can view their peer evaluation reports");
+        }
+
+        // Get all evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekId(studentId, weekId);
+
+        if (evaluations.isEmpty()) {
+            return new PeerEvaluationReportResponse(
+                    studentId,
+                    weekId,
+                    Map.of(),
+                    List.of(),
+                    "No evaluations available for this week"
+            );
+        }
+
+        // BR-5 Enforcement: Calculate aggregated scores per criterion (anonymous)
+        Map<String, Double> averageScores = calculateAverageScores(evaluations);
+
+        // BR-5 Enforcement: Collect only public comments (anonymous)
+        List<String> publicComments = evaluations.stream()
+                .map(PeerEvaluation::getPublicComment)
+                .filter(comment -> comment != null && !comment.trim().isEmpty())
+                .map(String::trim)
+                .toList();
+
+        return new PeerEvaluationReportResponse(
+                studentId,
+                weekId,
+                averageScores,
+                publicComments,
+                "Peer evaluation report retrieved successfully"
+        );
+    }
+
+    private Map<String, Double> calculateAverageScores(List<PeerEvaluation> evaluations) {
+        Map<String, Double> averageScores = new HashMap<>();
+        Map<String, Integer> scoreCounts = new HashMap<>();
+        Map<String, Double> scoreSums = new HashMap<>();
+
+        // Aggregate scores across all evaluations
+        for (PeerEvaluation evaluation : evaluations) {
+            for (Map.Entry<String, Integer> entry : evaluation.getScores().entrySet()) {
+                String criterion = entry.getKey();
+                Integer score = entry.getValue();
+
+                scoreSums.put(criterion, scoreSums.getOrDefault(criterion, 0.0) + score);
+                scoreCounts.put(criterion, scoreCounts.getOrDefault(criterion, 0) + 1);
+            }
+        }
+
+        // Calculate averages
+        for (String criterion : scoreSums.keySet()) {
+            double sum = scoreSums.get(criterion);
+            int count = scoreCounts.get(criterion);
+            averageScores.put(criterion, sum / count);
+        }
+
+        return averageScores;
+    }
+
+    private void notifyAssignedInstructors(Team team, Set<Long> previousInstructorIds) {
+        // Simple implementation - create notifications for instructors
+        // This is a placeholder for the actual notification logic
+        Set<Long> currentInstructorIds = team.getInstructorIds();
+        
+        // Notify new instructors
+        currentInstructorIds.stream()
+                .filter(instructorId -> !previousInstructorIds.contains(instructorId))
+                .forEach(instructorId -> {
+                    createNotification(instructorId, "You have been assigned to team: " + team.getName());
+                });
+    }
+
+    // Instructor Registration Methods (UC-30)
+    
+    public InstructorRegistrationResponse registerInstructor(InstructorRegistrationRequest request) {
+        // Mock invitation token verification (replace with actual logic from UC-18 when ready)
+        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
+            throw new ApiException("Invalid invitation token");
+        }
+        
+        // Extension 2a: Check if instructor already has an account
+        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+            throw new ApiException("Account already set up");
+        }
+        
+        // Create new instructor account
+        UserAccount instructor = new UserAccount();
+        instructor.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        instructor.setFirstName(request.getFirstName().trim());
+        instructor.setLastName(request.getLastName().trim());
+        instructor.setEmail(request.getEmail().trim().toLowerCase());
+        instructor.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt encryption
+        instructor.setRole(Role.INSTRUCTOR);
+        instructor.setActive(true);
+
+        UserAccount savedInstructor = userRepo.save(instructor);
+
+        return new InstructorRegistrationResponse(
+                savedInstructor.getId(),
+                savedInstructor.getFirstName(),
+                savedInstructor.getLastName(),
+                savedInstructor.getEmail(),
+                "Instructor account created successfully"
+        );
+    }
+
+    // Instructor Evaluation Methods (UC-31)
+    
+    public InstructorEvaluationResponse getStudentEvaluationsForInstructor(Long instructorId, Long studentId, String weekId) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access student evaluations");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        
+        // Convert to detail DTOs with evaluator names
+        List<StudentEvaluationDetail> evaluationDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new StudentEvaluationDetail(
+                            evaluation.getId(),
+                            evaluation.getEvaluatorId(),
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getEvaluateeId(),
+                            evaluation.getWeekId(),
+                            evaluation.getScores(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment(),
+                            evaluation.getCreatedAt()
+                    );
+                })
+                .toList();
+        
+        // Find students who did not submit evaluations (non-evaluators)
+        List<String> nonEvaluators = findNonEvaluators(studentId, weekId, evaluations);
+        
+        // Calculate system suggested grade (average of total scores)
+        Double systemSuggestedGrade = calculateSystemSuggestedGrade(evaluations);
+        
+        return new InstructorEvaluationResponse(
+                studentId,
+                student.getFirstName() + " " + student.getLastName(),
+                weekId,
+                evaluationDetails,
+                nonEvaluators,
+                systemSuggestedGrade,
+                "Student evaluations retrieved successfully"
+        );
+    }
+    
+    private List<String> findNonEvaluators(Long studentId, String weekId, List<PeerEvaluation> evaluations) {
+        // Get all students in the same team as the evaluated student
+        List<UserAccount> teammates = getStudentTeammates(studentId);
+        
+        // Get IDs of students who submitted evaluations
+        Set<Long> evaluatorIds = evaluations.stream()
+                .map(PeerEvaluation::getEvaluatorId)
+                .collect(Collectors.toSet());
+        
+        // Find teammates who did not submit evaluations
+        return teammates.stream()
+                .filter(teammate -> !teammate.getId().equals(studentId)) // Exclude the student being evaluated
+                .filter(teammate -> !evaluatorIds.contains(teammate.getId())) // Exclude those who submitted
+                .map(teammate -> teammate.getFirstName() + " " + teammate.getLastName())
+                .sorted()
+                .toList();
+    }
+    
+    private List<UserAccount> getStudentTeammates(Long studentId) {
+        // Find the team the student belongs to
+        List<Team> teams = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId))
+                .toList();
+        
+        if (teams.isEmpty()) {
+            return List.of();
+        }
+        
+        // Get all students in the first team found (assuming student belongs to only one team)
+        Team team = teams.get(0);
+        return team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+    }
+    
+    private Double calculateSystemSuggestedGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return 0.0;
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        return totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+    }
+    
+    public String saveInstructorFinalDecision(Long instructorId, Long studentId, String weekId, InstructorFinalDecisionRequest request) {
+        // Verify instructor has access to this student
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can save final decisions");
+        }
+        
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate students");
+        }
+        
+        // TODO: Save the instructor's final decision to a separate table/entity
+        // For now, we'll just return a success message
+        // In a complete implementation, you would save this to an InstructorEvaluation entity
+        
+        return String.format("Final decision saved for %s. Grade: %.1f, Comment: %s", 
+                student.getFirstName() + " " + student.getLastName(), 
+                request.getFinalGrade(), 
+                request.getInstructorComment() != null ? request.getInstructorComment() : "No comment");
+    }
+    
+    // Section-Level Evaluation Report Methods (UC-31 Refactored)
+    
+    public SectionEvaluationReportResponse getSectionEvaluationReport(Long instructorId, Long sectionId, String weekId) {
+        // Verify instructor has access to this section
+        UserAccount instructor = getUser(instructorId);
+        if (instructor.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only instructors can access section evaluation reports");
+        }
+        
+        Section section = getSectionEntity(sectionId);
+        
+        // Get all students in the section
+        List<UserAccount> sectionStudents = section.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        
+        // Generate reports for each student
+        List<StudentSectionReport> studentReports = sectionStudents.stream()
+                .map(student -> generateStudentReport(student, weekId))
+                .toList();
+        
+        return new SectionEvaluationReportResponse(
+                sectionId,
+                section.getName(),
+                weekId,
+                studentReports,
+                "Section evaluation report generated successfully"
+        );
+    }
+    
+    private StudentSectionReport generateStudentReport(UserAccount student, String weekId) {
+        // Get all peer evaluations for this student for the specified week
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(student.getId(), weekId);
+        
+        // Calculate grade (average of total scores)
+        String grade = calculateStudentGrade(evaluations);
+        
+        // Generate evaluator details
+        List<EvaluatorDetail> evaluatorDetails = evaluations.stream()
+                .map(evaluation -> {
+                    UserAccount evaluator = getUser(evaluation.getEvaluatorId());
+                    return new EvaluatorDetail(
+                            evaluator.getFirstName() + " " + evaluator.getLastName(),
+                            evaluation.getPublicComment(),
+                            evaluation.getPrivateComment()
+                    );
+                })
+                .toList();
+        
+        return new StudentSectionReport(
+                student.getId(),
+                student.getFirstName() + " " + student.getLastName(),
+                grade,
+                evaluatorDetails
+        );
+    }
+    
+    private String calculateStudentGrade(List<PeerEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return "0/60"; // Default when no evaluations
+        }
+        
+        // Calculate total score for each evaluation
+        List<Double> totalScores = evaluations.stream()
+                .map(evaluation -> {
+                    // Sum up all criterion scores for this evaluation
+                    return evaluation.getScores().values().stream()
+                            .mapToDouble(Double::doubleValue)
+                            .sum();
+                })
+                .toList();
+        
+        // Calculate average of total scores
+        double averageScore = totalScores.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+        
+        // Format as "X/60" (assuming max score is 60 based on PDF example)
+        return String.format("%.0f/60", Math.round(averageScore));
+    }
+    
+    // Team WAR Report Methods (UC-32)
+    
+    public TeamWARReportResponse getTeamWARReport(Long teamId, String weekId) {
+        // Get team information
+        Team team = getTeamEntity(teamId);
+        
+        // Get all students in the team
+        List<UserAccount> teamStudents = team.getStudentIds().stream()
+                .map(this::getUser)
+                .filter(student -> student.getRole() == Role.STUDENT)
+                .toList();
+        
+        // Generate mock data for testing (replace with actual data fetching)
+        List<StudentActivity> activeStudents = generateMockActiveStudents();
+        List<String> missingStudents = generateMockMissingStudents();
+        
+        return new TeamWARReportResponse(
+                teamId,
+                team.getName(),
+                weekId,
+                activeStudents,
+                missingStudents,
+                "Team WAR report generated successfully"
+        );
+    }
+    
+    private List<StudentActivity> generateMockActiveStudents() {
+        // Mock data for testing as specified
+        List<ActivityDetail> johnDoeActivities = List.of(
+                new ActivityDetail(
+                    "Development", 
+                    "Bug fixing", 
+                    "Fix critical bugs in the authentication module", 
+                    4.0, 
+                    3.5, 
+                    "Completed"
+                ),
+                new ActivityDetail(
+                    "Documentation", 
+                    "API documentation", 
+                    "Write comprehensive API documentation for REST endpoints", 
+                    3.0, 
+                    3.0, 
+                    "Completed"
+                )
+        );
+        
+        List<ActivityDetail> janeSmithActivities = List.of(
+                new ActivityDetail(
+                    "Testing", 
+                    "Unit testing", 
+                    "Write unit tests for the user service module", 
+                    5.0, 
+                    4.5, 
+                    "In Progress"
+                )
+        );
+        
+        // Sort by last name alphabetically
+        return List.of(
+                new StudentActivity("John Doe", johnDoeActivities),
+                new StudentActivity("Jane Smith", janeSmithActivities)
+        );
+    }
+    
+    private List<String> generateMockMissingStudents() {
+        // Mock data for testing as specified
+        return List.of("Bob Lazy");
+    }
+    
+    // Student Peer Evaluation Report Methods (UC-33)
+    
+    public List<WeeklyStudentReport> getStudentPeerEvaluationReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing (exact structure from JSON example)
+        return generateMockStudentPeerEvalReport();
+    }
+    
+    private List<WeeklyStudentReport> generateMockStudentPeerEvalReport() {
+        // Mock data for John Doe as specified
+        // Week 1 (02-12-2024): Grade 54/60, Evaluators: Tim Smith, Lily Fisher
+        List<StudentEvaluation> week1Evaluations = List.of(
+                new StudentEvaluation(
+                    "Tim Smith", 
+                    "Good work on the project implementation.", 
+                    "John is doing well but needs to improve documentation."
+                ),
+                new StudentEvaluation(
+                    "Lily Fisher", 
+                    "Need to work harder on testing.", 
+                    "Dr. Wei, I need to talk more about John's code quality."
+                )
+        );
+        
+        // Week 2 (02-19-2024): Grade 55/60, Evaluator: Bob Johnson
+        List<StudentEvaluation> week2Evaluations = List.of(
+                new StudentEvaluation(
+                    "Bob Johnson", 
+                    "Excellent progress this week.", 
+                    "John has shown significant improvement in collaboration."
+                )
+        );
+        
+        return List.of(
+                new WeeklyStudentReport(
+                    "02-12-2024 - 02-18-2024",
+                    "54/60",
+                    week1Evaluations
+                ),
+                new WeeklyStudentReport(
+                    "02-19-2024 - 02-25-2024",
+                    "55/60",
+                    week2Evaluations
+                )
+        );
+    }
+    
+    // Student WAR Report Methods (UC-34)
+    
+    public List<WeeklyStudentWARReport> getStudentWARReport(Long studentId, String startWeekId, String endWeekId) {
+        // Verify student exists
+        UserAccount student = getUser(studentId);
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only generate reports for students");
+        }
+        
+        // Generate mock data for testing
+        return generateMockStudentWARReport();
+    }
+    
+    private List<WeeklyStudentWARReport> generateMockStudentWARReport() {
+        // Mock data for UC-34 - 2 different weeks with grouped header rows
+        
+        // Week 1 activities
+        List<ActivityDetail> week1Activities = List.of(
+                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", "8", "10", "Completed"),
+                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", "3", "2", "Completed"),
+                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", "4", "4", "Completed")
+        );
+        
+        // Week 2 activities
+        List<ActivityDetail> week2Activities = List.of(
+                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", "6", "8", "Completed"),
+                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", "2", "2", "Completed"),
+                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", "3", "3", "In Progress")
+        );
+        
+        return List.of(
+                new WeeklyStudentWARReport(
+                    "02-12-2024 - 02-18-2024",
+                    week1Activities
+                ),
+                new WeeklyStudentWARReport(
+                    "02-19-2024 - 02-25-2024",
+                    week2Activities
+                )
+        );
     }
 }

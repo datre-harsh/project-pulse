@@ -1,31 +1,37 @@
 package edu.tcu.projectpulse.domain;
 
-import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-@Entity
-@Table(name = "sections")
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
+
+@Document("sections")
 @Getter
 @Setter
 public class Section {
 
+    public static final String SEQUENCE_NAME = "sections_sequence";
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Indexed(unique = true)
     private String name;
 
-    @Column(nullable = false)
-    private String semester;
+    private LocalDate startDate;
 
-    @Column(nullable = false)
-    private Integer year;
+    private LocalDate endDate;
 
-    @Column(nullable = false)
-    private Integer activeWeekStart;
+    private Long rubricId;
 
-    @Column(nullable = false)
-    private Integer activeWeekEnd;
+    private Set<Integer> inactiveWeekNumbers = new HashSet<>();
+
+    private Set<Long> studentIds = new HashSet<>();
+
+    private Set<Long> instructorIds = new HashSet<>();
 }

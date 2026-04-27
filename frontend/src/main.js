@@ -7,23 +7,35 @@ import * as directives from 'vuetify/directives'
 
 import App from './App.vue'
 import DashboardPage from './pages/DashboardPage.vue'
-import UsersPage from './pages/UsersPage.vue'
 import SectionsPage from './pages/SectionsPage.vue'
 import TeamsPage from './pages/TeamsPage.vue'
 import RubricPage from './pages/RubricPage.vue'
-import WarPage from './pages/WarPage.vue'
-import PeerEvaluationPage from './pages/PeerEvaluationPage.vue'
-import ReportsPage from './pages/ReportsPage.vue'
+import StudentsPage from './pages/StudentsPage.vue'
+import InstructorsPage from './pages/InstructorsPage.vue'
+import ProfilePage from './pages/ProfilePage.vue'
+import ManageWAR from './pages/ManageWAR.vue'
+import SubmitPeerEval from './pages/SubmitPeerEval.vue'
+import ViewPeerEvalReport from './pages/ViewPeerEvalReport.vue'
+import RegisterInstructor from './pages/RegisterInstructor.vue'
+import EvaluateStudent from './pages/EvaluateStudent.vue'
+import TeamWARReport from './pages/TeamWARReport.vue'
+import StudentPeerEvalReport from './pages/StudentPeerEvalReport.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
-  { path: '/users', component: UsersPage },
   { path: '/sections', component: SectionsPage },
   { path: '/teams', component: TeamsPage },
+  { path: '/students', component: StudentsPage },
+  { path: '/instructors', component: InstructorsPage },
   { path: '/rubric', component: RubricPage },
-  { path: '/war', component: WarPage },
-  { path: '/peer-evaluations', component: PeerEvaluationPage },
-  { path: '/reports', component: ReportsPage }
+  { path: '/war', component: ManageWAR },
+  { path: '/peer-evaluation', component: SubmitPeerEval },
+  { path: '/peer-evaluation-report', component: ViewPeerEvalReport },
+  { path: '/register-instructor/:token', component: RegisterInstructor },
+  { path: '/evaluate-student', component: EvaluateStudent },
+  { path: '/team-war-report', component: TeamWARReport },
+  { path: '/student-peer-eval-report', component: StudentPeerEvalReport },
+  { path: '/profile', component: ProfilePage }
 ]
 
 const router = createRouter({

@@ -1,35 +1,34 @@
 package edu.tcu.projectpulse.domain;
 
-import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.HashSet;
 import java.util.Set;
 
-@Entity
-@Table(name = "teams")
+@Document("teams")
 @Getter
 @Setter
 public class Team {
 
+    public static final String SEQUENCE_NAME = "teams_sequence";
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private Long sectionId;
 
-    @Column(nullable = false, unique = true)
+    @Indexed(unique = true)
     private String name;
 
-    @ElementCollection
-    @CollectionTable(name = "team_students", joinColumns = @JoinColumn(name = "team_id"))
-    @Column(name = "student_id")
+    private String description;
+
+    private String websiteUrl;
+
     private Set<Long> studentIds = new HashSet<>();
 
-    @ElementCollection
-    @CollectionTable(name = "team_instructors", joinColumns = @JoinColumn(name = "team_id"))
-    @Column(name = "instructor_id")
     private Set<Long> instructorIds = new HashSet<>();
 }

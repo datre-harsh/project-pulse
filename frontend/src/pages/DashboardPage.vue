@@ -17,20 +17,20 @@ import { onMounted, ref } from 'vue'
 import api from '../api'
 
 const cards = ref([
-  { title: 'Users', value: '0' },
+  { title: 'Rubrics', value: '0' },
   { title: 'Sections', value: '0' },
   { title: 'Teams', value: '0' }
 ])
 
 onMounted(async () => {
-  const [users, sections, teams] = await Promise.all([
-    api.get('/users'),
+  const [rubrics, sections, teams] = await Promise.all([
+    api.get('/rubrics'),
     api.get('/sections'),
     api.get('/teams')
   ])
 
   cards.value = [
-    { title: 'Users', value: users.data.length },
+    { title: 'Rubrics', value: rubrics.data.length },
     { title: 'Sections', value: sections.data.length },
     { title: 'Teams', value: teams.data.length }
   ]

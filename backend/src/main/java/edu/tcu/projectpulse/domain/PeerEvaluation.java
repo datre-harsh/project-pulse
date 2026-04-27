@@ -1,42 +1,34 @@
 package edu.tcu.projectpulse.domain;
 
-import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Map;
 
-@Entity
-@Table(name = "peer_evaluations")
-@Getter
-@Setter
+@Data
+@Document(collection = "peer_evaluations")
 public class PeerEvaluation {
-
+    
+    public static final String SEQUENCE_NAME = "peer_evaluation_sequence";
+    
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false)
-    private Long sectionId;
-
-    @Column(nullable = false)
-    private Long teamId;
-
-    @Column(nullable = false)
-    private Long evaluatorStudentId;
-
-    @Column(nullable = false)
-    private Long evaluateeStudentId;
-
-    @Column(nullable = false)
-    private Integer targetWeekNumber;
-
-    @Column(nullable = false)
-    private Integer totalScore;
-
-    @Column(nullable = false, length = 1000)
+    
+    private Long evaluatorId;
+    
+    private Long evaluateeId;
+    
+    private String weekId;
+    
+    private Map<String, Integer> scores; // Rubric criteria scores
+    
     private String publicComment;
-
-    @Column(nullable = false, updatable = false)
-    private LocalDate submittedDate;
+    
+    private String privateComment;
+    
+    private LocalDateTime createdAt;
+    
+    private LocalDateTime updatedAt;
 }

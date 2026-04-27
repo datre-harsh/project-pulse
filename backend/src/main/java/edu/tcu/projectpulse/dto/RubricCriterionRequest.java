@@ -1,13 +1,14 @@
 package edu.tcu.projectpulse.dto;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import java.math.BigDecimal;
+
 public record RubricCriterionRequest(
         @NotBlank String name,
-        @NotNull @Min(1) @Max(10) Integer maxScore,
+        @NotBlank String description,
+        @NotNull BigDecimal maxScore,
         Boolean active
 ) {
 }
