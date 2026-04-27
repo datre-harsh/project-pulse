@@ -211,7 +211,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -258,14 +258,14 @@ const loadSectionReport = async () => {
   
   loading.value = true
   try {
-    const response = await axios.get(`/api/instructors/sections/${selectedSectionId.value}/evaluations/${selectedWeekId.value}`)
+    const response = await api.get(`/instructors/sections/${selectedSectionId.value}/evaluations/${selectedWeekId.value}`)
     sectionReport.value = response.data
     
     successMessage.value = 'Section evaluation report generated successfully'
     showSuccessMessage.value = true
   } catch (error) {
     console.error('Error loading section report:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to generate section evaluation report'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to generate section evaluation report'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {

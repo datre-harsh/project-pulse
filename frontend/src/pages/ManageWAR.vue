@@ -246,7 +246,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -321,7 +321,7 @@ const statusOptions = [
 const loadActivities = async () => {
   loading.value = true
   try {
-    const response = await axios.get('/api/students/war', {
+    const response = await api.get('/students/war', {
       params: { weekId: selectedWeekId.value }
     })
     activities.value = response.data
@@ -381,10 +381,10 @@ const saveActivity = async () => {
   
   try {
     if (isEditing.value) {
-      await axios.put(`/api/students/war/${selectedActivity.value.id}`, activityFormData.value)
+      await api.put(`/students/war/${selectedActivity.value.id}`, activityFormData.value)
       successMessage.value = 'Activity updated successfully'
     } else {
-      await axios.post('/api/students/war', activityFormData.value)
+      await api.post('/students/war', activityFormData.value)
       successMessage.value = 'Activity added successfully'
     }
     
@@ -393,7 +393,7 @@ const saveActivity = async () => {
     loadActivities()
   } catch (error) {
     console.error('Error saving activity:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to save activity'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to save activity'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {
@@ -406,14 +406,14 @@ const deleteActivity = async () => {
   deleting.value = true
   
   try {
-    await axios.delete(`/api/students/war/${selectedActivity.value.id}`)
+    await api.delete(`/students/war/${selectedActivity.value.id}`)
     deleteDialog.value = false
     successMessage.value = 'Activity deleted successfully'
     showSuccessMessage.value = true
     loadActivities()
   } catch (error) {
     console.error('Error deleting activity:', error)
-    const errorMsg = error.response?.data?.message || 'Failed to delete activity'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to delete activity'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {

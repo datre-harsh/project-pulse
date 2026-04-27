@@ -256,7 +256,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -404,7 +404,7 @@ const submitEvaluation = async () => {
     
     console.log('Submitting evaluation data:', evaluationData)
     
-    const response = await axios.post('/api/students/peer-evaluation', evaluationData)
+    const response = await api.post('/students/peer-evaluation', evaluationData)
     
     console.log('Submission successful:', response.data)
     
@@ -420,7 +420,7 @@ const submitEvaluation = async () => {
     console.error('Error status:', error.response?.status)
     console.error('Error data:', error.response?.data)
     
-    const errorMsg = error.response?.data?.message || error.message || 'Failed to submit evaluation'
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to submit evaluation'
     errorMessage.value = errorMsg
     showErrorMessage.value = true
   } finally {
