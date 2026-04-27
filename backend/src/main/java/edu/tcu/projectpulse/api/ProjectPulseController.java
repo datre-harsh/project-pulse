@@ -137,6 +137,39 @@ public class ProjectPulseController {
         return service.updateStudentProfile(studentId, req);
     }
 
+    // Weekly Activity Report (WAR) Endpoints
+    
+    @GetMapping("/students/war")
+    public List<WeeklyActivityResponse> getWeeklyActivities(
+            @RequestParam(required = false) String weekId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.getWeeklyActivities(studentId, weekId);
+    }
+
+    @PostMapping("/students/war")
+    public WeeklyActivityResponse createWeeklyActivity(@Valid @RequestBody WeeklyActivityRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.createWeeklyActivity(studentId, req);
+    }
+
+    @PutMapping("/students/war/{activityId}")
+    public WeeklyActivityResponse updateWeeklyActivity(
+            @PathVariable String activityId, 
+            @Valid @RequestBody WeeklyActivityRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        return service.updateWeeklyActivity(studentId, activityId, req);
+    }
+
+    @DeleteMapping("/students/war/{activityId}")
+    public void deleteWeeklyActivity(@PathVariable String activityId) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        String studentId = "1"; // This should come from the authenticated user
+        service.deleteWeeklyActivity(studentId, activityId);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

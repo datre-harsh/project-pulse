@@ -20,6 +20,7 @@ import edu.tcu.projectpulse.repo.SectionRepository;
 import edu.tcu.projectpulse.repo.StudentInvitationRepository;
 import edu.tcu.projectpulse.repo.TeamRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
+import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class ProjectPulseService {
     private final RubricRepository rubricRepo;
     private final RubricCriterionRepository rubricRepoCriteria;
     private final StudentInvitationRepository invitationRepo;
+    private final WeeklyActivityRepository weeklyActivityRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -1194,6 +1196,102 @@ public class ProjectPulseService {
                 savedStudent.getLastName(),
                 savedStudent.getEmail(),
                 "Profile updated successfully"
+        );
+    }
+
+    // Weekly Activity Report (WAR) Methods
+    
+    public List<WeeklyActivityResponse> getWeeklyActivities(String studentId, String weekId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can access their weekly activities");
+        }
+
+        List<WeeklyActivity> activities;
+        if (weekId != null && !weekId.isBlank()) {
+            activities = weeklyActivityRepo.findByStudentIdAndWeekIdOrderByCreatedAtDesc(studentId, weekId);
+        } else {
+            activities = weeklyActivityRepo.findByStudentIdOrderByCreatedAtDesc(studentId);
+        }
+
+        return activities.stream().map(this::toWeeklyActivityResponse).toList();
+    }
+
+    public WeeklyActivityResponse createWeeklyActivity(String studentId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can create weekly activities");
+        }
+
+        WeeklyActivity activity = new WeeklyActivity();
+        activity.setId(String.valueOf(System.currentTimeMillis())); // Using String ID for MongoDB consistency
+        activity.setStudentId(studentId);
+        activity.setCategory(req.category());
+        activity.setDescription(req.description().trim());
+        activity.setPlannedHours(req.plannedHours());
+        activity.setActualHours(req.actualHours() != null ? req.actualHours() : 0.0);
+        activity.setStatus(req.status());
+        activity.setWeekId(req.weekId());
+        activity.setCreatedAt(LocalDateTime.now());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public WeeklyActivityResponse updateWeeklyActivity(String studentId, String activityId, WeeklyActivityRequest req) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can update their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only update your own activities");
+        }
+
+        activity.setCategory(req.category());
+        activity.setDescription(req.description().trim());
+        activity.setPlannedHours(req.plannedHours());
+        activity.setActualHours(req.actualHours() != null ? req.actualHours() : 0.0);
+        activity.setStatus(req.status());
+        activity.setWeekId(req.weekId());
+        activity.setUpdatedAt(LocalDateTime.now());
+
+        WeeklyActivity saved = weeklyActivityRepo.save(activity);
+        return toWeeklyActivityResponse(saved);
+    }
+
+    public void deleteWeeklyActivity(String studentId, String activityId) {
+        UserAccount student = getUser(Long.parseLong(studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can delete their weekly activities");
+        }
+
+        WeeklyActivity activity = weeklyActivityRepo.findById(activityId)
+                .orElseThrow(() -> new ApiException("Activity not found"));
+        
+        if (!activity.getStudentId().equals(studentId)) {
+            throw new ApiException("You can only delete your own activities");
+        }
+
+        weeklyActivityRepo.delete(activity);
+    }
+
+    private WeeklyActivityResponse toWeeklyActivityResponse(WeeklyActivity activity) {
+        return new WeeklyActivityResponse(
+                activity.getId(),
+                activity.getStudentId(),
+                activity.getCategory(),
+                activity.getDescription(),
+                activity.getPlannedHours(),
+                activity.getActualHours(),
+                activity.getStatus(),
+                activity.getWeekId(),
+                activity.getCreatedAt(),
+                activity.getUpdatedAt()
         );
     }
 }

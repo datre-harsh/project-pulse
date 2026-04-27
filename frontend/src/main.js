@@ -13,6 +13,7 @@ import RubricPage from './pages/RubricPage.vue'
 import StudentsPage from './pages/StudentsPage.vue'
 import InstructorsPage from './pages/InstructorsPage.vue'
 import ProfilePage from './pages/ProfilePage.vue'
+import ManageWAR from './pages/ManageWAR.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
@@ -21,6 +22,7 @@ const routes = [
   { path: '/students', component: StudentsPage },
   { path: '/instructors', component: InstructorsPage },
   { path: '/rubric', component: RubricPage },
+  { path: '/war', component: ManageWAR },
   { path: '/profile', component: ProfilePage }
 ]
 
