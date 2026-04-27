@@ -21,6 +21,7 @@ import edu.tcu.projectpulse.repo.StudentInvitationRepository;
 import edu.tcu.projectpulse.repo.TeamRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
 import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
+import edu.tcu.projectpulse.repo.PeerEvaluationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ public class ProjectPulseService {
     private final RubricCriterionRepository rubricRepoCriteria;
     private final StudentInvitationRepository invitationRepo;
     private final WeeklyActivityRepository weeklyActivityRepo;
+    private final PeerEvaluationRepository peerEvaluationRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -1292,6 +1294,89 @@ public class ProjectPulseService {
                 activity.getWeekId(),
                 activity.getCreatedAt(),
                 activity.getUpdatedAt()
+        );
+    }
+
+    // Peer Evaluation Methods
+    
+    public PeerEvaluationResponse submitPeerEvaluation(Long evaluatorId, PeerEvaluationRequest req) {
+        UserAccount evaluator = getUser(evaluatorId);
+        if (evaluator.getRole() != Role.STUDENT) {
+            throw new ApiException("Only students can submit peer evaluations");
+        }
+
+        UserAccount evaluatee = getUser(req.getEvaluateeId());
+        if (evaluatee.getRole() != Role.STUDENT) {
+            throw new ApiException("Can only evaluate other students");
+        }
+
+        if (evaluatorId.equals(req.getEvaluateeId())) {
+            throw new ApiException("Cannot evaluate yourself");
+        }
+
+        // Business Rule BR-3: Check if evaluation already exists for this week and teammate
+        peerEvaluationRepo.findByEvaluatorIdAndEvaluateeIdAndWeekId(evaluatorId, req.getEvaluateeId(), req.getWeekId())
+                .ifPresent(existing -> {
+                    throw new ApiException("You have already submitted an evaluation for this student this week. Evaluations cannot be edited once completed.");
+                });
+
+        // Validate scores
+        if (req.getScores() == null || req.getScores().isEmpty()) {
+            throw new ApiException("Scores are required");
+        }
+
+        // Validate each score is between 1-5
+        req.getScores().forEach((criterion, score) -> {
+            if (score == null || score < 1 || score > 5) {
+                throw new ApiException("All scores must be between 1 and 5");
+            }
+        });
+
+        // Verify students are in the same team
+        if (!areStudentsInSameTeam(evaluatorId, req.getEvaluateeId())) {
+            throw new ApiException("You can only evaluate students in your team");
+        }
+
+        PeerEvaluation evaluation = new PeerEvaluation();
+        evaluation.setId(sequenceGeneratorService.generateSequence(PeerEvaluation.SEQUENCE_NAME));
+        evaluation.setEvaluatorId(evaluatorId);
+        evaluation.setEvaluateeId(req.getEvaluateeId());
+        evaluation.setWeekId(req.getWeekId().trim());
+        evaluation.setScores(req.getScores());
+        evaluation.setPublicComment(req.getPublicComment() != null ? req.getPublicComment().trim() : null);
+        evaluation.setPrivateComment(req.getPrivateComment() != null ? req.getPrivateComment().trim() : null);
+        evaluation.setCreatedAt(LocalDateTime.now());
+        evaluation.setUpdatedAt(LocalDateTime.now());
+
+        PeerEvaluation saved = peerEvaluationRepo.save(evaluation);
+        return toPeerEvaluationResponse(saved, "Peer evaluation submitted successfully");
+    }
+
+    private boolean areStudentsInSameTeam(Long studentId1, Long studentId2) {
+        List<Team> teams1 = teamRepo.findAll().stream()
+                .filter(team -> team.getStudentIds().contains(studentId1))
+                .toList();
+
+        for (Team team : teams1) {
+            if (team.getStudentIds().contains(studentId2)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private PeerEvaluationResponse toPeerEvaluationResponse(PeerEvaluation evaluation, String message) {
+        return new PeerEvaluationResponse(
+                evaluation.getId(),
+                evaluation.getEvaluatorId(),
+                evaluation.getEvaluateeId(),
+                evaluation.getWeekId(),
+                evaluation.getScores(),
+                evaluation.getPublicComment(),
+                evaluation.getPrivateComment(),
+                evaluation.getCreatedAt(),
+                evaluation.getUpdatedAt(),
+                message
         );
     }
 }

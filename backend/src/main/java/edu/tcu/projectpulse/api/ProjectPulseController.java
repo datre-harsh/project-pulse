@@ -170,6 +170,15 @@ public class ProjectPulseController {
         service.deleteWeeklyActivity(studentId, activityId);
     }
 
+    // Peer Evaluation Endpoints
+    
+    @PostMapping("/students/peer-evaluation")
+    public PeerEvaluationResponse submitPeerEvaluation(@Valid @RequestBody PeerEvaluationRequest req) {
+        // TODO: Get student ID from authentication context (currently hardcoded for demo)
+        Long evaluatorId = 1L; // This should come from the authenticated user
+        return service.submitPeerEvaluation(evaluatorId, req);
+    }
+
     @GetMapping("/users/{id}/notifications")
     public List<NotificationResponse> getUserNotifications(@PathVariable Long id) {
         return service.getUserNotifications(id);

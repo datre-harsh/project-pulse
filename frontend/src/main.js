@@ -14,6 +14,7 @@ import StudentsPage from './pages/StudentsPage.vue'
 import InstructorsPage from './pages/InstructorsPage.vue'
 import ProfilePage from './pages/ProfilePage.vue'
 import ManageWAR from './pages/ManageWAR.vue'
+import SubmitPeerEval from './pages/SubmitPeerEval.vue'
 
 const routes = [
   { path: '/', component: DashboardPage },
@@ -23,6 +24,7 @@ const routes = [
   { path: '/instructors', component: InstructorsPage },
   { path: '/rubric', component: RubricPage },
   { path: '/war', component: ManageWAR },
+  { path: '/peer-evaluation', component: SubmitPeerEval },
   { path: '/profile', component: ProfilePage }
 ]
 
