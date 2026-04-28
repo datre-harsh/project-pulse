@@ -1195,6 +1195,7 @@ public class ProjectPulseService {
 
         UserAccount savedStudent = userRepo.save(student);
         return new ProfileUpdateResponse(
+                savedStudent.getId().toString(),
                 savedStudent.getFirstName(),
                 savedStudent.getLastName(),
                 savedStudent.getEmail(),
@@ -1592,7 +1593,7 @@ public class ProjectPulseService {
                 .map(evaluation -> {
                     // Sum up all criterion scores for this evaluation
                     return evaluation.getScores().values().stream()
-                            .mapToDouble(Double::doubleValue)
+                            .mapToDouble(Integer::doubleValue)
                             .sum();
                 })
                 .toList();
@@ -1696,7 +1697,7 @@ public class ProjectPulseService {
                 .map(evaluation -> {
                     // Sum up all criterion scores for this evaluation
                     return evaluation.getScores().values().stream()
-                            .mapToDouble(Double::doubleValue)
+                            .mapToDouble(Integer::doubleValue)
                             .sum();
                 })
                 .toList();
@@ -1851,16 +1852,16 @@ public class ProjectPulseService {
         
         // Week 1 activities
         List<ActivityDetail> week1Activities = List.of(
-                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", "8", "10", "Completed"),
-                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", "3", "2", "Completed"),
-                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", "4", "4", "Completed")
+                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", 8.0, 10.0, "Completed"),
+                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", 3.0, 2.0, "Completed"),
+                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", 4.0, 4.0, "Completed")
         );
         
         // Week 2 activities
         List<ActivityDetail> week2Activities = List.of(
-                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", "6", "8", "Completed"),
-                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", "2", "2", "Completed"),
-                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", "3", "3", "In Progress")
+                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", 6.0, 8.0, "Completed"),
+                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", 2.0, 2.0, "Completed"),
+                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", 3.0, 3.0, "In Progress")
         );
         
         return List.of(

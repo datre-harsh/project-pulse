@@ -18,7 +18,7 @@ public class StudentEvaluationDetail {
     
     private String weekId;
     
-    private Map<String, Double> scores;
+    private Map<String, Integer> scores;
     
     private String publicComment;
     
@@ -27,7 +27,7 @@ public class StudentEvaluationDetail {
     private LocalDateTime createdAt;
     
     public StudentEvaluationDetail(Long evaluationId, Long evaluatorId, String evaluatorName, Long evaluateeId, 
-                                 String weekId, Map<String, Double> scores, String publicComment, 
+                                 String weekId, Map<String, Integer> scores, String publicComment, 
                                  String privateComment, LocalDateTime createdAt) {
         this.evaluationId = evaluationId;
         this.evaluatorId = evaluatorId;
