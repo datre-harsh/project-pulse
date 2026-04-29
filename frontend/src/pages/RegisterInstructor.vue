@@ -50,6 +50,20 @@
                   />
                 </v-col>
               </v-row>
+
+              <v-row>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="confirmPassword"
+                    label="Re-enter Password"
+                    prepend-inner-icon="mdi-lock-check"
+                    variant="outlined"
+                    :type="showPassword ? 'text' : 'password'"
+                    :rules="confirmPasswordRules"
+                    required
+                  />
+                </v-col>
+              </v-row>
               
               <v-row>
                 <v-col cols="12">
@@ -183,6 +197,7 @@ const firstName = ref('')
 const lastName = ref('')
 const email = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 
 // Messages
 const showSuccessMessage = ref(false)
@@ -216,6 +231,11 @@ const passwordRules = [
   v => (v && v.length <= 100) || 'Password must be less than 100 characters'
 ]
 
+const confirmPasswordRules = [
+  v => !!v || 'Re-enter password is required',
+  v => v === password.value || 'Passwords must match'
+]
+
 // Show confirmation dialog
 const showConfirmationDialog = () => {
   if (!invitationToken.value) {
@@ -239,6 +259,7 @@ const submitRegistration = async () => {
       lastName: lastName.value.trim(),
       email: email.value.trim(),
       password: password.value,
+      confirmPassword: confirmPassword.value,
       invitationToken: invitationToken.value
     }
     

@@ -305,7 +305,8 @@ const weekOptions = [
   { title: 'Week 1', value: '2024-week1' },
   { title: 'Week 2', value: '2024-week2' },
   { title: 'Week 3', value: '2024-week3' },
-  { title: 'Week 4', value: '2024-week4' }
+  { title: 'Week 4', value: '2024-week4' },
+  { title: 'Week 5', value: '2024-week5' }
 ]
 
 // Computed property for submit button validation
@@ -347,10 +348,12 @@ const loadTeamMembers = async () => {
 
     currentMembership.value = membership
     teamMembers.value = response.data
-      .filter(student => student.teamId === membership.teamId && student.id !== currentUser.id)
+      .filter(student => student.teamId === membership.teamId)
       .map(student => ({
         id: student.id,
-        name: `${student.firstName} ${student.lastName}`
+        name: student.id === currentUser.id
+          ? `${student.firstName} ${student.lastName} (Self)`
+          : `${student.firstName} ${student.lastName}`
       }))
       .sort((left, right) => left.name.localeCompare(right.name))
 
@@ -412,9 +415,14 @@ const getScoreColor = (score) => {
   const colors = {
     1: 'red',
     2: 'orange',
-    3: 'yellow',
-    4: 'light-green',
-    5: 'green'
+    3: 'orange',
+    4: 'yellow',
+    5: 'lime',
+    6: 'light-green',
+    7: 'green',
+    8: 'teal',
+    9: 'blue',
+    10: 'primary'
   }
   return colors[score] || 'grey'
 }

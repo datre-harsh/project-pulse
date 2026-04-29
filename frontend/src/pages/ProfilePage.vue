@@ -73,6 +73,28 @@
                     variant="outlined"
                     class="mb-4"
                   />
+
+                  <v-text-field
+                    v-model="editedProfile.password"
+                    label="New Password"
+                    :rules="passwordRules"
+                    prepend-inner-icon="mdi-lock"
+                    variant="outlined"
+                    type="password"
+                    class="mb-4"
+                    hint="Leave blank to keep your current password"
+                    persistent-hint
+                  />
+
+                  <v-text-field
+                    v-model="editedProfile.confirmPassword"
+                    label="Re-enter New Password"
+                    :rules="confirmPasswordRules"
+                    prepend-inner-icon="mdi-lock-check"
+                    variant="outlined"
+                    type="password"
+                    class="mb-4"
+                  />
                 </v-col>
               </v-row>
             </v-form>
@@ -145,6 +167,13 @@
                 <span class="text-red">{{ currentProfile.email }}</span>
                 <v-icon class="mx-2">mdi-arrow-right</v-icon>
                 <span class="text-green">{{ editedProfile.email }}</span>
+              </v-list-item-subtitle>
+            </v-list-item>
+
+            <v-list-item v-if="editedProfile.password">
+              <v-list-item-title>Password:</v-list-item-title>
+              <v-list-item-subtitle>
+                <span class="text-green">Password will be changed</span>
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
@@ -223,8 +252,20 @@ const currentProfile = ref({
 const editedProfile = ref({
   firstName: '',
   lastName: '',
-  email: ''
+  email: '',
+  password: '',
+  confirmPassword: ''
 })
+
+const passwordRules = [
+  v => !v || v.length >= 6 || 'Password must be at least 6 characters',
+  v => !v || v.length <= 100 || 'Password must be less than 100 characters'
+]
+
+const confirmPasswordRules = [
+  v => !editedProfile.value.password || !!v || 'Re-enter password is required',
+  v => !editedProfile.value.password || v === editedProfile.value.password || 'Passwords must match'
+]
 
 // Load current profile data
 const loadProfile = async () => {
@@ -240,7 +281,7 @@ const loadProfile = async () => {
     }
     
     // Reset edited profile to current values
-    editedProfile.value = { ...currentProfile.value }
+    editedProfile.value = { ...currentProfile.value, password: '', confirmPassword: '' }
   } catch (error) {
     console.error('Error loading profile:', error)
     errorMessage.value = 'Failed to load profile information'
@@ -250,13 +291,13 @@ const loadProfile = async () => {
 
 // Start editing
 const startEditing = () => {
-  editedProfile.value = { ...currentProfile.value }
+  editedProfile.value = { ...currentProfile.value, password: '', confirmPassword: '' }
   isEditing.value = true
 }
 
 // Cancel editing
 const cancelEditing = () => {
-  editedProfile.value = { ...currentProfile.value }
+  editedProfile.value = { ...currentProfile.value, password: '', confirmPassword: '' }
   isEditing.value = false
 }
 
@@ -276,11 +317,17 @@ const saveProfile = async () => {
   confirmationDialog.value = false
   
   try {
-    const response = await api.put('/students/profile', {
+    const payload = {
       firstName: editedProfile.value.firstName,
       lastName: editedProfile.value.lastName,
       email: editedProfile.value.email
-    })
+    }
+    if (editedProfile.value.password) {
+      payload.password = editedProfile.value.password
+      payload.confirmPassword = editedProfile.value.confirmPassword
+    }
+
+    const response = await api.put('/students/profile', payload)
     
     // Update current profile with saved data
     currentProfile.value = {

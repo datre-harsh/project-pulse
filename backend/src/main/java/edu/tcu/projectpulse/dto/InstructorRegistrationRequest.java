@@ -24,6 +24,9 @@ public class InstructorRegistrationRequest {
     @NotBlank(message = "Password is required")
     @Size(min = 6, max = 100, message = "Password must be between 6 and 100 characters")
     private String password;
+
+    @NotBlank(message = "Re-enter password is required")
+    private String confirmPassword;
     
     @NotBlank(message = "Invitation token is required")
     private String invitationToken;

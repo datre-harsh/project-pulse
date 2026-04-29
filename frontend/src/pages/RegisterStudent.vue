@@ -55,6 +55,17 @@
               />
 
               <v-text-field
+                v-model="form.confirmPassword"
+                label="Re-enter Password"
+                :rules="confirmPasswordRules"
+                variant="outlined"
+                prepend-inner-icon="mdi-lock-check"
+                :type="showPassword ? 'text' : 'password'"
+                class="mb-4"
+                required
+              />
+
+              <v-text-field
                 v-model="form.invitationToken"
                 label="Invitation Token"
                 :rules="tokenRules"
@@ -181,6 +192,7 @@ const form = reactive({
   lastName: '',
   email: '',
   password: '',
+  confirmPassword: '',
   invitationToken: ''
 })
 
@@ -209,6 +221,11 @@ const emailRules = [
 const passwordRules = [
   v => !!v || 'Password is required',
   v => (v && v.length >= 6) || 'Password must be at least 6 characters long'
+]
+
+const confirmPasswordRules = [
+  v => !!v || 'Re-enter password is required',
+  v => v === form.password || 'Passwords must match'
 ]
 
 const tokenRules = [

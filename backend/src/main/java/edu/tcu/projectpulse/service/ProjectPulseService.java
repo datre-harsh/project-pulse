@@ -25,8 +25,8 @@ import edu.tcu.projectpulse.repo.UserAccountRepository;
 import edu.tcu.projectpulse.repo.WeeklyActivityRepository;
 import edu.tcu.projectpulse.repo.PeerEvaluationRepository;
 
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -57,7 +57,11 @@ public class ProjectPulseService {
     private final WeeklyActivityRepository weeklyActivityRepo;
     private final PeerEvaluationRepository peerEvaluationRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
+    private final EmailService emailService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    @Value("${app.base-url:http://localhost:5173}")
+    private String appBaseUrl;
 
     public List<RubricDetailResponse> getRubrics(String name) {
         List<Rubric> rubrics = (name == null || name.isBlank())
@@ -297,8 +301,8 @@ public class ProjectPulseService {
                 student.getLastName(),
                 section == null ? "Not assigned to a section" : section.getName(),
                 team == null ? "Not assigned to a team" : team.getName(),
-                List.of("No peer evaluations are available in this version of Project Pulse yet."),
-                List.of("No WARs are available in this version of Project Pulse yet.")
+                getStudentPeerEvaluationSummaries(student.getId()),
+                getStudentWarSummaries(student.getId())
         );
     }
 
@@ -435,6 +439,7 @@ public class ProjectPulseService {
             invitation.setMessage(message);
             invitation.setSentAt(LocalDateTime.now());
             InstructorInvitation saved = instructorInvitationRepo.save(invitation);
+            emailService.sendEmail(email, subject, message);
             responses.add(toInstructorInvitation(saved));
         }
         return responses;
@@ -509,6 +514,7 @@ public class ProjectPulseService {
             invitation.setMessage(message);
             invitation.setSentAt(LocalDateTime.now());
             StudentInvitation saved = invitationRepo.save(invitation);
+            emailService.sendEmail(email, subject, message);
             responses.add(toStudentInvitation(saved));
         }
         return responses;
@@ -857,11 +863,19 @@ public class ProjectPulseService {
     }
 
     private String buildStudentRegistrationLink(String token) {
-        return "/register-student/" + token;
+        return absoluteUrl("/register-student/" + token);
     }
 
     private String buildInstructorRegistrationLink(String token) {
-        return "/register-instructor/" + token;
+        return absoluteUrl("/register-instructor/" + token);
+    }
+
+    private String absoluteUrl(String path) {
+        String base = appBaseUrl == null || appBaseUrl.isBlank() ? "" : appBaseUrl.trim();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + path;
     }
 
     private boolean matchesSectionName(Team team, String sectionName) {
@@ -1227,6 +1241,7 @@ public class ProjectPulseService {
     public StudentRegistrationResponse registerStudent(StudentRegistrationRequest request) {
         StudentInvitation invitation = findOpenStudentInvitation(request.getInvitationToken());
         String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        validatePasswordConfirmation(request.getPassword(), request.getConfirmPassword());
 
         if (!invitation.getEmail().equalsIgnoreCase(normalizedEmail)) {
             throw new ApiException("The registration email must match the invited student email");
@@ -1292,6 +1307,10 @@ public class ProjectPulseService {
         student.setFirstName(req.getFirstName().trim());
         student.setLastName(req.getLastName().trim());
         student.setEmail(req.getEmail().trim());
+        if (req.getPassword() != null && !req.getPassword().isBlank()) {
+            validatePasswordConfirmation(req.getPassword(), req.getConfirmPassword());
+            student.setPassword(passwordEncoder.encode(req.getPassword()));
+        }
 
         UserAccount savedStudent = userRepo.save(student);
         return new ProfileUpdateResponse(
@@ -1412,10 +1431,6 @@ public class ProjectPulseService {
             throw new ApiException("Can only evaluate other students");
         }
 
-        if (evaluatorId.equals(req.getEvaluateeId())) {
-            throw new ApiException("Cannot evaluate yourself");
-        }
-
         // Business Rule BR-3: Check if evaluation already exists for this week and teammate
         peerEvaluationRepo.findByEvaluatorIdAndEvaluateeIdAndWeekId(evaluatorId, req.getEvaluateeId(), req.getWeekId())
                 .ifPresent(existing -> {
@@ -1455,6 +1470,10 @@ public class ProjectPulseService {
     }
 
     private boolean areStudentsInSameTeam(Long studentId1, Long studentId2) {
+        if (studentId1.equals(studentId2)) {
+            return teamRepo.findAll().stream().anyMatch(team -> team.getStudentIds().contains(studentId1));
+        }
+
         List<Team> teams1 = teamRepo.findAll().stream()
                 .filter(team -> team.getStudentIds().contains(studentId1))
                 .toList();
@@ -1566,6 +1585,7 @@ public class ProjectPulseService {
     public InstructorRegistrationResponse registerInstructor(InstructorRegistrationRequest request) {
         InstructorInvitation invitation = findOpenInstructorInvitation(request.getInvitationToken());
         String normalizedEmail = request.getEmail().trim().toLowerCase();
+        validatePasswordConfirmation(request.getPassword(), request.getConfirmPassword());
 
         if (!invitation.getEmail().equalsIgnoreCase(normalizedEmail)) {
             throw new ApiException("The registration email must match the invited instructor email");
@@ -1916,6 +1936,41 @@ public class ProjectPulseService {
         return !isBlank(weekId)
                 && (isBlank(startWeekId) || weekId.compareTo(startWeekId) >= 0)
                 && (isBlank(endWeekId) || weekId.compareTo(endWeekId) <= 0);
+    }
+
+    private void validatePasswordConfirmation(String password, String confirmPassword) {
+        if (confirmPassword == null || confirmPassword.isBlank()) {
+            throw new ApiException("Re-enter password is required");
+        }
+        if (!Objects.equals(password, confirmPassword)) {
+            throw new ApiException("Password and re-entered password must match");
+        }
+    }
+
+    private List<String> getStudentPeerEvaluationSummaries(Long studentId) {
+        List<PeerEvaluation> evaluations = peerEvaluationRepo.findAll().stream()
+                .filter(evaluation -> evaluation.getEvaluateeId().equals(studentId))
+                .toList();
+        if (evaluations.isEmpty()) {
+            return List.of("No peer evaluations received yet.");
+        }
+        return evaluations.stream()
+                .collect(Collectors.groupingBy(PeerEvaluation::getWeekId, TreeMap::new, Collectors.counting()))
+                .entrySet().stream()
+                .map(entry -> entry.getKey() + ": " + entry.getValue() + " peer evaluation(s) received")
+                .toList();
+    }
+
+    private List<String> getStudentWarSummaries(Long studentId) {
+        List<WeeklyActivity> activities = weeklyActivityRepo.findByStudentIdOrderByCreatedAtDesc(studentId.toString());
+        if (activities.isEmpty()) {
+            return List.of("No WAR activities submitted yet.");
+        }
+        return activities.stream()
+                .collect(Collectors.groupingBy(WeeklyActivity::getWeekId, TreeMap::new, Collectors.counting()))
+                .entrySet().stream()
+                .map(entry -> entry.getKey() + ": " + entry.getValue() + " WAR activit" + (entry.getValue() == 1 ? "y" : "ies"))
+                .toList();
     }
 
     private String titleCase(String value) {
