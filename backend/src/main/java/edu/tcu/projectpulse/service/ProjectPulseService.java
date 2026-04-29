@@ -721,6 +721,9 @@ public class ProjectPulseService {
     }
 
     private void validateInactiveWeeks(LocalDate startDate, LocalDate endDate, Set<Integer> inactiveWeeks) {
+        if (inactiveWeeks == null || inactiveWeeks.isEmpty()) {
+            return;
+        }
         Set<Integer> availableWeeks = getWeekNumbers(startDate, endDate);
         if (!availableWeeks.containsAll(inactiveWeeks)) {
             throw new ApiException("Inactive weeks must fall within the section date range");

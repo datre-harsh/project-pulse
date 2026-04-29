@@ -179,11 +179,15 @@ const canSendInvites = computed(() =>
   Boolean(selectedSection.value && invitation.value.emails.trim())
 )
 
-const parseWeeks = (value) =>
-  value
+const parseWeeks = (value) => {
+  if (!value || !value.trim()) {
+    return []
+  }
+  return value
     .split(',')
     .map((part) => Number(part.trim()))
-    .filter((week) => !Number.isNaN(week))
+    .filter((week) => Number.isInteger(week) && week > 0)
+}
 
 const formatUser = (user) => `${user.firstName} ${user.lastName}`
 
