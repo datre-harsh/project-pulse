@@ -173,7 +173,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '../api'
+import api, { getCurrentUser } from '../api'
 
 const isReady = ref(false)
 const activeTab = ref('peer-eval')
@@ -196,14 +196,46 @@ const getStatusColor = (status) => {
   }
 }
 
+const deduplicateStudents = (studentRows) => {
+  const uniqueStudents = new Map()
+
+  studentRows.forEach((student) => {
+    if (!uniqueStudents.has(student.id)) {
+      uniqueStudents.set(student.id, {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`
+      })
+    }
+  })
+
+  return Array.from(uniqueStudents.values())
+}
+
 const loadStudents = async () => {
+  const currentUser = getCurrentUser()
   const response = await api.get('/students')
-  students.value = response.data.map(student => ({
-    id: student.id,
-    name: `${student.firstName} ${student.lastName}`
-  }))
+  let availableStudents = response.data
+
+  if (currentUser?.role === 'INSTRUCTOR') {
+    // Ralph: Instructors should only see students from the teams they supervise.
+    const teamResponse = await api.get('/teams', {
+      params: { instructorId: currentUser.id }
+    })
+    const supervisedTeamIds = new Set(teamResponse.data.map(team => team.id))
+
+    availableStudents = availableStudents.filter(student =>
+      student.teamId && supervisedTeamIds.has(student.teamId)
+    )
+  }
+
+  students.value = deduplicateStudents(availableStudents)
+
   if (!selectedStudentId.value && students.value.length > 0) {
     selectedStudentId.value = students.value[0].id
+  }
+
+  if (students.value.length === 0) {
+    selectedStudentId.value = null
   }
 }
 
