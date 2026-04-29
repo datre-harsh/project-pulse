@@ -1812,7 +1812,7 @@ public class ProjectPulseService {
                 .orElse(0.0);
         
         // Format as "X/60" (assuming max score is 60 based on PDF example)
-        return String.format("%.0f/60", Math.round(averageScore));
+        return String.format("%d/60", Math.round(averageScore));
     }
     
     // Team WAR Report Methods (UC-32)
