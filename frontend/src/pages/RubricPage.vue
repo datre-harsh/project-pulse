@@ -44,7 +44,7 @@
 
         <div class="d-flex flex-wrap ga-3">
           <v-btn color="secondary" variant="tonal" @click="addCriterion">Add Criterion</v-btn>
-          <v-btn color="primary" @click="submitRubric">{{ form.id ? 'Save Rubric' : 'Create Rubric' }}</v-btn>
+          <v-btn color="primary" :loading="savingRubric" :disabled="!canSaveRubric" @click="submitRubric">{{ form.id ? 'Save Rubric' : 'Create Rubric' }}</v-btn>
           <v-btn variant="text" @click="resetForm">Clear</v-btn>
         </div>
       </v-card-text>
@@ -62,12 +62,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import api from '../api'
 
 const rubrics = ref([])
 const error = ref('')
 const success = ref('')
+const savingRubric = ref(false)
 
 const headers = [
   { title: 'ID', key: 'id' },
@@ -89,6 +90,18 @@ const form = ref({
   name: '',
   criteria: [emptyCriterion()]
 })
+
+const canSaveRubric = computed(() =>
+  Boolean(
+    form.value.name.trim()
+      && form.value.criteria.length
+      && form.value.criteria.every((criterion) =>
+        criterion.name.trim()
+          && criterion.description.trim()
+          && Number(criterion.maxScore) > 0
+      )
+  )
+)
 
 const load = async () => {
   const res = await api.get('/rubrics')
@@ -143,6 +156,7 @@ const submitRubric = async () => {
   }
 
   try {
+    savingRubric.value = true
     if (form.value.id) {
       await api.put(`/rubrics/${form.value.id}`, payload)
       success.value = 'Rubric updated.'
@@ -154,6 +168,8 @@ const submitRubric = async () => {
     await load()
   } catch (err) {
     error.value = err.response?.data?.error || 'Unable to save rubric.'
+  } finally {
+    savingRubric.value = false
   }
 }
 

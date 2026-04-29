@@ -273,7 +273,6 @@ const loadEvaluationReport = async () => {
     evaluationReport.value = mockEvaluationData
     
     // TODO: Replace with actual API call when ready
-    // const studentId = 1
     // const response = await api.get(`/students/peer-evaluations/report/${selectedWeekId.value}`)
     // evaluationReport.value = response.data
     

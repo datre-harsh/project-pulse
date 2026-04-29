@@ -6,7 +6,7 @@
     <v-alert v-if="success" type="success" class="mb-4" closable @click:close="success = ''">{{ success }}</v-alert>
 
     <v-card class="mb-6">
-      <v-card-title>Add Students</v-card-title>
+      <v-card-title>Invite Students to a Section</v-card-title>
       <v-card-text>
         <v-row>
           <v-col cols="12" md="4">
@@ -43,7 +43,7 @@
         </v-row>
 
         <div class="d-flex flex-wrap ga-3 mt-2">
-          <v-btn color="primary" :loading="inviting" @click="sendStudentInvites">Send Invitations</v-btn>
+          <v-btn color="primary" :loading="inviting" :disabled="!canSendInvites" @click="sendStudentInvites">Send Invitations</v-btn>
           <v-btn variant="text" @click="resetInvitation">Clear</v-btn>
         </div>
       </v-card-text>
@@ -74,7 +74,7 @@
               :items="sections"
               item-title="name"
               item-value="id"
-              label="Section ID"
+              label="Section"
               clearable
             />
           </v-col>
@@ -84,14 +84,14 @@
               :items="teams"
               item-title="name"
               item-value="id"
-              label="Team ID"
+              label="Team"
               clearable
             />
           </v-col>
         </v-row>
 
         <div class="d-flex flex-wrap ga-3 mt-2">
-          <v-btn color="primary" @click="searchStudents">Search</v-btn>
+          <v-btn color="primary" :disabled="!hasSearchCriteria" @click="searchStudents">Search</v-btn>
           <v-btn variant="text" @click="resetFilters">Clear</v-btn>
         </div>
       </v-card-text>
@@ -212,6 +212,10 @@ const invitation = ref({
 
 const hasSearchCriteria = computed(() =>
   Object.values(filters.value).some((value) => value !== null && String(value).trim() !== '')
+)
+
+const canSendInvites = computed(() =>
+  Boolean(invitation.value.sectionId && invitation.value.emails.trim())
 )
 
 const loadMetadata = async () => {

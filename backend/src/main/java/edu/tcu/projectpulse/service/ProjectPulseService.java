@@ -100,6 +100,42 @@ public class ProjectPulseService {
         return userRepo.findById(id).orElseThrow(() -> new ApiException("User not found"));
     }
 
+    public LoginResponse login(LoginRequest req) {
+        UserAccount user = userRepo.findByEmailIgnoreCase(req.email().trim())
+                .orElseThrow(() -> new ApiException("Invalid email or password"));
+        if (!user.isActive()) {
+            throw new ApiException("This account is deactivated");
+        }
+        if (user.getPassword() == null || !passwordEncoder.matches(req.password(), user.getPassword())) {
+            throw new ApiException("Invalid email or password");
+        }
+        return toLoginResponse(user);
+    }
+
+    public LoginResponse getCurrentUser(Long userId) {
+        return toLoginResponse(requireActiveUser(userId));
+    }
+
+    public UserAccount requireActiveUser(Long userId) {
+        if (userId == null) {
+            throw new ApiException("Login required");
+        }
+        UserAccount user = getUser(userId);
+        if (!user.isActive()) {
+            throw new ApiException("This account is deactivated");
+        }
+        return user;
+    }
+
+    public UserAccount requireRole(Long userId, Role... roles) {
+        UserAccount user = requireActiveUser(userId);
+        Set<Role> allowed = new HashSet<>(Arrays.asList(roles));
+        if (!allowed.contains(user.getRole())) {
+            throw new ApiException("This action requires one of these roles: " + allowed);
+        }
+        return user;
+    }
+
     public List<UserSummaryResponse> getInstructorOptions() {
         return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
                 .filter(UserAccount::isActive)
@@ -1057,6 +1093,16 @@ public class ProjectPulseService {
         );
     }
 
+    private LoginResponse toLoginResponse(UserAccount user) {
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole()
+        );
+    }
+
     private StudentSearchResponse toStudentSearchResponse(UserAccount student, Section section, Team team) {
         return new StudentSearchResponse(
                 student.getId(),
@@ -1195,6 +1241,7 @@ public class ProjectPulseService {
 
         UserAccount savedStudent = userRepo.save(student);
         return new ProfileUpdateResponse(
+                savedStudent.getId().toString(),
                 savedStudent.getFirstName(),
                 savedStudent.getLastName(),
                 savedStudent.getEmail(),
@@ -1592,7 +1639,7 @@ public class ProjectPulseService {
                 .map(evaluation -> {
                     // Sum up all criterion scores for this evaluation
                     return evaluation.getScores().values().stream()
-                            .mapToDouble(Double::doubleValue)
+                            .mapToDouble(Integer::doubleValue)
                             .sum();
                 })
                 .toList();
@@ -1628,11 +1675,10 @@ public class ProjectPulseService {
     
     // Section-Level Evaluation Report Methods (UC-31 Refactored)
     
-    public SectionEvaluationReportResponse getSectionEvaluationReport(Long instructorId, Long sectionId, String weekId) {
-        // Verify instructor has access to this section
-        UserAccount instructor = getUser(instructorId);
-        if (instructor.getRole() != Role.INSTRUCTOR) {
-            throw new ApiException("Only instructors can access section evaluation reports");
+    public SectionEvaluationReportResponse getSectionEvaluationReport(Long viewerId, Long sectionId, String weekId) {
+        UserAccount viewer = getUser(viewerId);
+        if (viewer.getRole() != Role.ADMIN && viewer.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only admins and instructors can access section evaluation reports");
         }
         
         Section section = getSectionEntity(sectionId);
@@ -1696,7 +1742,7 @@ public class ProjectPulseService {
                 .map(evaluation -> {
                     // Sum up all criterion scores for this evaluation
                     return evaluation.getScores().values().stream()
-                            .mapToDouble(Double::doubleValue)
+                            .mapToDouble(Integer::doubleValue)
                             .sum();
                 })
                 .toList();
@@ -1851,16 +1897,16 @@ public class ProjectPulseService {
         
         // Week 1 activities
         List<ActivityDetail> week1Activities = List.of(
-                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", "8", "10", "Completed"),
-                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", "3", "2", "Completed"),
-                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", "4", "4", "Completed")
+                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", 8.0, 10.0, "Completed"),
+                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", 3.0, 2.0, "Completed"),
+                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", 4.0, 4.0, "Completed")
         );
         
         // Week 2 activities
         List<ActivityDetail> week2Activities = List.of(
-                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", "6", "8", "Completed"),
-                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", "2", "2", "Completed"),
-                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", "3", "3", "In Progress")
+                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", 6.0, 8.0, "Completed"),
+                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", 2.0, 2.0, "Completed"),
+                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", 3.0, 3.0, "In Progress")
         );
         
         return List.of(

@@ -15,6 +15,8 @@ public interface PeerEvaluationRepository extends MongoRepository<PeerEvaluation
     List<PeerEvaluation> findByEvaluatorIdAndWeekId(Long evaluatorId, String weekId);
     
     List<PeerEvaluation> findByEvaluateeIdAndWeekId(Long evaluateeId, String weekId);
+
+    List<PeerEvaluation> findByEvaluateeIdAndWeekIdOrderByCreatedAtDesc(Long evaluateeId, String weekId);
     
     List<PeerEvaluation> findByWeekId(String weekId);
 }

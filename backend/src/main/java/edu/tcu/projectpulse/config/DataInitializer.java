@@ -8,6 +8,7 @@ import edu.tcu.projectpulse.repo.RubricCriterionRepository;
 import edu.tcu.projectpulse.repo.RubricRepository;
 import edu.tcu.projectpulse.repo.UserAccountRepository;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -19,6 +20,7 @@ public class DataInitializer implements CommandLineRunner {
     private final RubricRepository rubricRepo;
     private final RubricCriterionRepository rubricCriterionRepo;
     private final SequenceGeneratorService sequenceGeneratorService;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public DataInitializer(
             UserAccountRepository userRepo,
@@ -47,6 +49,9 @@ public class DataInitializer implements CommandLineRunner {
         createUserIfMissing("deactivated.instructor@projectpulse.local", "Deactivated", "Instructor", Role.INSTRUCTOR, false);
         createUserIfMissing("student1@projectpulse.local", "Sam", "Student", Role.STUDENT);
         createUserIfMissing("student2@projectpulse.local", "Taylor", "Student", Role.STUDENT);
+        createUserIfMissing("harsh.mehta@tcu.edu", "Harsh", "Mehta", Role.STUDENT);
+        createUserIfMissing("ralph.nguyen@tcu.edu", "Ralph", "Nguyen", Role.STUDENT);
+        createUserIfMissing("jenny.patel@tcu.edu", "Jenny", "Patel", Role.STUDENT);
     }
 
     private void createUserIfMissing(String email, String firstName, String lastName, Role role) {
@@ -54,7 +59,13 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void createUserIfMissing(String email, String firstName, String lastName, Role role, boolean active) {
-        if (userRepo.findByEmailIgnoreCase(email).isPresent()) {
+        var existing = userRepo.findByEmailIgnoreCase(email);
+        if (existing.isPresent()) {
+            UserAccount user = existing.get();
+            if (user.getPassword() == null || user.getPassword().isBlank()) {
+                user.setPassword(passwordEncoder.encode("password"));
+                userRepo.save(user);
+            }
             return;
         }
         UserAccount user = new UserAccount();
@@ -64,6 +75,7 @@ public class DataInitializer implements CommandLineRunner {
         user.setLastName(lastName);
         user.setRole(role);
         user.setActive(active);
+        user.setPassword(passwordEncoder.encode("password"));
         userRepo.save(user);
     }
 
