@@ -840,26 +840,38 @@ public class ProjectPulseService {
     }
 
     private String buildInvitationMessage(String email, String token, String customMessage) {
+        String registrationLink = buildStudentRegistrationLink(token);
         if (customMessage != null && !customMessage.isBlank()) {
-            return customMessage.replace("[Registration link]", buildStudentRegistrationLink(token)).trim();
+            return applyRegistrationLink(customMessage, registrationLink).trim();
         }
         return ("Project Pulse has invited " + email + " to join the section.\n\n"
                 + "To complete registration, use this link:\n"
-                + buildStudentRegistrationLink(token) + "\n\n"
+                + registrationLink + "\n\n"
                 + "If you need help, contact your course admin.").trim();
     }
 
     private String buildInstructorInvitationMessage(String token, String customMessage) {
+        String registrationLink = buildInstructorRegistrationLink(token);
         if (customMessage != null && !customMessage.isBlank()) {
-            return customMessage.replace("[Registration link]", buildInstructorRegistrationLink(token)).trim();
+            return applyRegistrationLink(customMessage, registrationLink).trim();
         }
         return ("Hello,\n\n"
                 + "[Name of the Admin] has invited you to join The Peer Evaluation Tool. To complete your registration, please use the link below:\n\n"
-                + buildInstructorRegistrationLink(token) + "\n\n"
+                + registrationLink + "\n\n"
                 + "If you have any questions or need assistance, feel free to contact [Admin's email] or our team directly.\n\n"
                 + "Please note: This email is not monitored, so do not reply directly to this message.\n\n"
                 + "Best regards,\n"
                 + "Peer Evaluation Tool Team").trim();
+    }
+
+    private String applyRegistrationLink(String message, String registrationLink) {
+        String updated = message
+                .replace("[Registration link]", registrationLink)
+                .replace("{link}", registrationLink);
+        if (updated.equals(message)) {
+            return message + "\n\nRegistration link: " + registrationLink;
+        }
+        return updated;
     }
 
     private String buildStudentRegistrationLink(String token) {
