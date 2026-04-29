@@ -100,11 +100,11 @@
         </v-card-title>
         
         <v-card-text>
-          <v-form ref="activityForm" v-model="formValid">
+          <v-form ref="activityFormRef" v-model="formValid">
             <v-row>
               <v-col cols="12" md="6">
                 <v-select
-                  v-model="activityForm.category"
+                  v-model="activityFormData.category"
                   :items="categoryOptions"
                   label="Category"
                   :rules="[v => !!v || 'Category is required']"
@@ -115,7 +115,7 @@
               
               <v-col cols="12" md="6">
                 <v-select
-                  v-model="activityForm.status"
+                  v-model="activityFormData.status"
                   :items="statusOptions"
                   label="Status"
                   :rules="[v => !!v || 'Status is required']"
@@ -128,7 +128,7 @@
             <v-row>
               <v-col cols="12">
                 <v-textarea
-                  v-model="activityForm.description"
+                  v-model="activityFormData.description"
                   label="Description"
                   :rules="[v => !!v || 'Description is required', v => (v && v.trim().length > 0) || 'Description cannot be empty']"
                   variant="outlined"
@@ -142,7 +142,7 @@
             <v-row>
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="activityForm.plannedHours"
+                  v-model="activityFormData.plannedHours"
                   label="Planned Hours"
                   type="number"
                   step="0.5"
@@ -155,7 +155,7 @@
               
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="activityForm.actualHours"
+                  v-model="activityFormData.actualHours"
                   label="Actual Hours"
                   type="number"
                   step="0.5"
@@ -259,7 +259,7 @@ const formValid = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
 const selectedActivity = ref(null)
-const activityForm = ref(null)
+const activityFormRef = ref(null)
 
 // Messages
 const showSuccessMessage = ref(false)
@@ -371,10 +371,13 @@ const openDeleteDialog = (activity) => {
 
 // Save activity
 const saveActivity = async () => {
-  if (activityForm.value) {
-    activityForm.value.validate()
+  if (activityFormRef.value) {
+    const result = await activityFormRef.value.validate()
+    if (!result.valid) {
+      return
+    }
   }
-  
+
   if (!formValid.value) return
   
   saving.value = true

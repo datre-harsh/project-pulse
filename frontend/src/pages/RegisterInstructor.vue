@@ -44,6 +44,7 @@
                     label="Email"
                     prepend-inner-icon="mdi-email"
                     variant="outlined"
+                    :readonly="emailLocked"
                     :rules="emailRules"
                     required
                   />
@@ -173,6 +174,9 @@ const formValid = ref(false)
 const submitting = ref(false)
 const showPassword = ref(false)
 const confirmationDialog = ref(false)
+const loadingInvitation = ref(false)
+const emailLocked = ref(false)
+const registrationForm = ref(null)
 
 // Form fields
 const firstName = ref('')
@@ -214,6 +218,11 @@ const passwordRules = [
 
 // Show confirmation dialog
 const showConfirmationDialog = () => {
+  if (!invitationToken.value) {
+    errorMessage.value = 'A valid invitation link is required to register as an instructor'
+    showErrorMessage.value = true
+    return
+  }
   if (registrationForm.value) {
     registrationForm.value.validate()
   }
@@ -255,9 +264,33 @@ const submitRegistration = async () => {
   }
 }
 
+const loadInvitation = async () => {
+  invitationToken.value = String(route.params.token || '').trim()
+  if (!invitationToken.value) {
+    errorMessage.value = 'This registration link is missing an invitation token'
+    showErrorMessage.value = true
+    return
+  }
+
+  loadingInvitation.value = true
+  try {
+    const response = await api.get(`/instructor-invitations/token/${invitationToken.value}`)
+    email.value = response.data.email
+    emailLocked.value = true
+  } catch (error) {
+    console.error('Error loading instructor invitation:', error)
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || 'This invitation link is invalid'
+    errorMessage.value = errorMsg
+    showErrorMessage.value = true
+    invitationToken.value = ''
+  } finally {
+    loadingInvitation.value = false
+  }
+}
+
 // Get invitation token from URL on component mount
 onMounted(() => {
-  invitationToken.value = route.params.token || 'mock-token-for-testing'
+  loadInvitation()
 })
 </script>
 

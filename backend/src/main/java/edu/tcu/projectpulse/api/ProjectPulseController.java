@@ -113,6 +113,11 @@ public class ProjectPulseController {
         return service.getInstructorInvitations();
     }
 
+    @GetMapping("/instructor-invitations/token/{token}")
+    public InstructorInvitationTokenResponse getInstructorInvitation(@PathVariable String token) {
+        return service.getInstructorInvitation(token);
+    }
+
     @PostMapping("/instructor-invitations")
     public List<InstructorInvitationResponse> inviteInstructors(@Valid @RequestBody InstructorInvitationRequest req) {
         return service.inviteInstructors(req);

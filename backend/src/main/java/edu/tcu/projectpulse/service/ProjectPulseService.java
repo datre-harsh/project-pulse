@@ -405,6 +405,16 @@ public class ProjectPulseService {
                 .toList();
     }
 
+    public InstructorInvitationTokenResponse getInstructorInvitation(String token) {
+        InstructorInvitation invitation = findOpenInstructorInvitation(token);
+        return new InstructorInvitationTokenResponse(
+                invitation.getEmail(),
+                invitation.getSubject(),
+                invitation.getSentAt(),
+                invitation.isAccepted()
+        );
+    }
+
     public List<InstructorInvitationResponse> inviteInstructors(InstructorInvitationRequest req) {
         List<String> emails = parseStrictSemicolonEmails(req.emails());
 
@@ -1161,6 +1171,21 @@ public class ProjectPulseService {
         );
     }
 
+    private InstructorInvitation findOpenInstructorInvitation(String token) {
+        if (token == null || token.isBlank()) {
+            throw new ApiException("Invitation token is required");
+        }
+
+        InstructorInvitation invitation = instructorInvitationRepo.findByToken(token.trim())
+                .orElseThrow(() -> new ApiException("Invalid invitation token"));
+
+        if (invitation.isAccepted()) {
+            throw new ApiException("This invitation has already been used");
+        }
+
+        return invitation;
+    }
+
     private Set<Integer> getActiveWeekNumbers(Section section) {
         Set<Integer> weeks = new TreeSet<>(getWeekNumbers(section.getStartDate(), section.getEndDate()));
         weeks.removeAll(section.getInactiveWeekNumbers());
@@ -1510,13 +1535,15 @@ public class ProjectPulseService {
     // Instructor Registration Methods (UC-30)
     
     public InstructorRegistrationResponse registerInstructor(InstructorRegistrationRequest request) {
-        // Mock invitation token verification (replace with actual logic from UC-18 when ready)
-        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
-            throw new ApiException("Invalid invitation token");
+        InstructorInvitation invitation = findOpenInstructorInvitation(request.getInvitationToken());
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        if (!invitation.getEmail().equalsIgnoreCase(normalizedEmail)) {
+            throw new ApiException("The registration email must match the invited instructor email");
         }
-        
-        // Extension 2a: Check if instructor already has an account
-        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+
+        // Ralph: Keep the invitation single-use and prevent duplicate instructor accounts.
+        if (userRepo.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
             throw new ApiException("Account already set up");
         }
         
@@ -1525,12 +1552,14 @@ public class ProjectPulseService {
         instructor.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
         instructor.setFirstName(request.getFirstName().trim());
         instructor.setLastName(request.getLastName().trim());
-        instructor.setEmail(request.getEmail().trim().toLowerCase());
+        instructor.setEmail(normalizedEmail);
         instructor.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt encryption
         instructor.setRole(Role.INSTRUCTOR);
         instructor.setActive(true);
 
         UserAccount savedInstructor = userRepo.save(instructor);
+        invitation.setAccepted(true);
+        instructorInvitationRepo.save(invitation);
 
         return new InstructorRegistrationResponse(
                 savedInstructor.getId(),
