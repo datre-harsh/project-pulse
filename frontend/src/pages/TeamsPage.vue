@@ -44,13 +44,14 @@
         </v-row>
 
         <div class="d-flex flex-wrap ga-3 mt-2">
-          <v-btn color="primary" @click="submitTeam">{{ form.id ? 'Save Team' : 'Create Team' }}</v-btn>
+          <v-btn color="primary" :loading="savingTeam" :disabled="!canSaveTeam" @click="submitTeam">{{ form.id ? 'Save Team' : 'Create Team' }}</v-btn>
           <v-btn variant="text" @click="resetForm">Clear</v-btn>
         </div>
       </v-card-text>
     </v-card>
 
     <v-card class="mb-6">
+      <v-card-title>Find Teams</v-card-title>
       <v-card-text>
         <v-row>
           <v-col cols="12" md="4">
@@ -59,8 +60,9 @@
           <v-col cols="12" md="4">
             <v-text-field v-model="filters.teamName" label="Filter by Team Name" clearable />
           </v-col>
-          <v-col cols="12" md="4" class="d-flex align-center">
+          <v-col cols="12" md="4" class="d-flex align-center ga-3">
             <v-btn color="secondary" variant="tonal" @click="loadTeams">Apply Filters</v-btn>
+            <v-btn variant="text" @click="resetFilters">Clear</v-btn>
           </v-col>
         </v-row>
       </v-card-text>
@@ -325,6 +327,7 @@ const removingInstructor = ref(false)
 const assignmentDialog = ref(false)
 const pendingAssignment = ref(null)
 const assigningInstructors = ref(false)
+const savingTeam = ref(false)
 const error = ref('')
 const success = ref('')
 
@@ -374,6 +377,18 @@ const resetForm = () => {
   availableStudents.value = []
   availableInstructors.value = []
 }
+
+const resetFilters = async () => {
+  filters.value = {
+    sectionId: null,
+    teamName: ''
+  }
+  await loadTeams()
+}
+
+const canSaveTeam = computed(() =>
+  Boolean(form.value.sectionId && form.value.name.trim() && form.value.instructorIds.length)
+)
 
 const loadTeams = async () => {
   const params = {}
@@ -575,6 +590,7 @@ const performTeamSubmit = async () => {
   }
 
   try {
+    savingTeam.value = true
     if (form.value.id) {
       await api.put(`/teams/${form.value.id}`, payload)
       success.value = pendingAssignment.value
@@ -592,6 +608,8 @@ const performTeamSubmit = async () => {
     cancelAssignment()
   } catch (err) {
     error.value = err.response?.data?.error || 'Unable to save team.'
+  } finally {
+    savingTeam.value = false
   }
 }
 

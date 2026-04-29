@@ -312,15 +312,12 @@ const canSubmit = computed(() => {
 const loadTeamMembers = async () => {
   loading.value = true
   try {
-    // TODO: Get actual student ID from authentication
-    const studentId = 1
-    
-    // Mock team members for testing (replace with actual team data)
+    // Minimal demo roster until the team-member selector is connected to a dedicated API.
     teamMembers.value = [
       { id: 2, name: 'Alice Johnson' },
       { id: 3, name: 'Bob Smith' },
       { id: 4, name: 'Carol Davis' }
-    ].filter(member => member.id !== studentId)
+    ]
   } catch (error) {
     console.error('Error loading team members:', error)
     errorMessage.value = 'Failed to load team members'

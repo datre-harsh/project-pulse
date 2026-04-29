@@ -7,15 +7,20 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class ProjectPulseApplication {
     public static void main(String[] args) {
-        // Load .env file
-        Dotenv dotenv = Dotenv.configure().load();
-        
-        // Set system properties for Spring Boot to use
-        System.setProperty("MONGODB_URI", dotenv.get("MONGODB_URI"));
-        System.setProperty("MONGODB_DATABASE", dotenv.get("MONGODB_DATABASE"));
-        System.setProperty("PORT", dotenv.get("PORT"));
-        System.setProperty("CORS_ALLOWED_ORIGINS", dotenv.get("CORS_ALLOWED_ORIGINS"));
-        
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+
+        applyDotenvValue(dotenv, "MONGODB_URI");
+        applyDotenvValue(dotenv, "MONGODB_DATABASE");
+        applyDotenvValue(dotenv, "PORT");
+        applyDotenvValue(dotenv, "CORS_ALLOWED_ORIGINS");
+
         SpringApplication.run(ProjectPulseApplication.class, args);
+    }
+
+    private static void applyDotenvValue(Dotenv dotenv, String key) {
+        String value = dotenv.get(key);
+        if (value != null && !value.isBlank() && System.getenv(key) == null) {
+            System.setProperty(key, value);
+        }
     }
 }
