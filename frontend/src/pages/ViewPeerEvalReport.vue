@@ -138,6 +138,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import api from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -159,45 +160,15 @@ const weekOptions = [
   { title: '02-12-2024 to 02-18-2024', value: '2024-week5' }
 ]
 
-// Mock rubric criteria with descriptions (matching PDF example)
-const rubricCriteria = ref([
-  { 
-    id: 'quality', 
-    name: 'Quality of work', 
-    description: 'How do you rate the quality of work done by your teammate?' 
-  },
-  { 
-    id: 'participation', 
-    name: 'Participation', 
-    description: 'How actively did your teammate participate in team activities?' 
-  },
-  { 
-    id: 'communication', 
-    name: 'Communication', 
-    description: 'How effective was your teammate in communication?' 
-  }
-])
-
-// Mock data for John Doe example (matching PDF)
-const mockEvaluationData = {
-  studentId: 1,
-  weekId: '2024-week5',
-  averageScores: {
-    quality: 8.5,
-    participation: 7.0,
-    communication: 9.0
-  },
-  publicComments: [
-    'Good work. Need to work harder.'
-  ],
-  grade: '54/60',
-  message: 'Peer evaluation report retrieved successfully'
-}
+const rubricCriteria = computed(() => Object.keys(evaluationReport.value?.averageScores || {}).map(key => ({
+  id: key,
+  name: key,
+  description: ''
+})))
 
 // Computed properties
 const hasEvaluations = computed(() => {
-  // Always return true for mock data to bypass 'No evaluations' state
-  return true
+  return Object.keys(evaluationReport.value?.averageScores || {}).length > 0
 })
 
 // Dynamic table headers based on rubric criteria
@@ -225,19 +196,19 @@ const tableHeaders = computed(() => {
   return headers
 })
 
-// Table data with John Doe example
 const tableData = computed(() => {
   if (!hasEvaluations.value) return []
   
-  // Return mock data for John Doe
-  return [{
-    student: 'John Doe',
-    quality: mockEvaluationData.averageScores.quality,
-    participation: mockEvaluationData.averageScores.participation,
-    communication: mockEvaluationData.averageScores.communication,
-    publicComments: mockEvaluationData.publicComments,
-    grade: mockEvaluationData.grade
-  }]
+  const scores = evaluationReport.value.averageScores || {}
+  const row = {
+    student: 'Me',
+    publicComments: evaluationReport.value.publicComments || [],
+    grade: calculateGrade(scores)
+  }
+  Object.entries(scores).forEach(([key, value]) => {
+    row[key] = value
+  })
+  return [row]
 })
 
 // Get selected week display text
@@ -260,21 +231,20 @@ const getGradeColor = (grade) => {
   return 'red'
 }
 
-// Load evaluation report (now using mock data)
+const calculateGrade = (scores) => {
+  const values = Object.values(scores || {})
+  if (!values.length) return '0/0'
+  const earned = values.reduce((sum, value) => sum + Number(value || 0), 0)
+  return `${earned.toFixed(1)}/${values.length * 10}`
+}
+
 const loadEvaluationReport = async () => {
   if (!selectedWeekId.value) return
   
   loading.value = true
   try {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Use mock data instead of API call
-    evaluationReport.value = mockEvaluationData
-    
-    // TODO: Replace with actual API call when ready
-    // const response = await api.get(`/students/peer-evaluations/report/${selectedWeekId.value}`)
-    // evaluationReport.value = response.data
+    const response = await api.get(`/students/peer-evaluations/report/${selectedWeekId.value}`)
+    evaluationReport.value = response.data
     
   } catch (error) {
     console.error('Error loading evaluation report:', error)

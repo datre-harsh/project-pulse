@@ -227,7 +227,6 @@ const showErrorMessage = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
 
-// Mock data for dropdowns (replace with actual API calls)
 const weekOptions = [
   { title: '01-15-2024 to 01-21-2024', value: '2024-week1' },
   { title: '01-22-2024 to 01-28-2024', value: '2024-week2' },
@@ -236,11 +235,7 @@ const weekOptions = [
   { title: '02-12-2024 to 02-18-2024', value: '2024-week5' }
 ]
 
-const sectionOptions = ref([
-  { title: 'CS 201 Section A', value: 1 },
-  { title: 'CS 201 Section B', value: 2 },
-  { title: 'CS 301 Section A', value: 3 }
-])
+const sectionOptions = ref([])
 
 // Step handlers
 const onWeekChange = () => {
@@ -294,9 +289,18 @@ const getGradeColor = (grade) => {
   return 'red'
 }
 
-// Load initial data
-onMounted(() => {
-  // Initialize with default week
+onMounted(async () => {
+  try {
+    const response = await api.get('/sections')
+    sectionOptions.value = response.data.map(section => ({
+      title: section.name,
+      value: section.id
+    }))
+  } catch (error) {
+    console.error('Error loading sections:', error)
+    errorMessage.value = 'Failed to load sections'
+    showErrorMessage.value = true
+  }
 })
 </script>
 

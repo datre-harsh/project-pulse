@@ -159,11 +159,12 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api from '../api'
 
 const router = useRouter()
+const route = useRoute()
 
 // Form state
 const registrationForm = ref(null)
@@ -181,6 +182,12 @@ const form = reactive({
   email: '',
   password: '',
   invitationToken: ''
+})
+
+onMounted(() => {
+  if (route.params.token) {
+    form.invitationToken = route.params.token
+  }
 })
 
 // Validation rules

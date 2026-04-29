@@ -20,10 +20,40 @@
                 Peer Evaluation Report
               </v-card-title>
               <v-card-subtitle>
-                John Doe - Peer evaluations with instructor visibility
+                Peer evaluations with instructor visibility
               </v-card-subtitle>
               
               <v-card-text>
+                <v-row class="mb-4">
+                  <v-col cols="12" md="4">
+                    <v-select
+                      v-model="selectedStudentId"
+                      :items="students"
+                      item-title="name"
+                      item-value="id"
+                      label="Student"
+                      variant="outlined"
+                      @update:model-value="loadReports"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field
+                      v-model="startWeekId"
+                      label="Start Week ID"
+                      variant="outlined"
+                      @change="loadReports"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field
+                      v-model="endWeekId"
+                      label="End Week ID"
+                      variant="outlined"
+                      @change="loadReports"
+                    />
+                  </v-col>
+                </v-row>
+
                 <v-table v-if="peerEvalData && peerEvalData.length > 0" class="elevation-1">
                   <thead>
                     <tr>
@@ -71,7 +101,7 @@
                 Student WAR Report
               </v-card-title>
               <v-card-subtitle>
-                John Doe - Weekly Activity Report
+                Weekly Activity Report
               </v-card-subtitle>
               
               <v-card-text>
@@ -143,12 +173,16 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import api from '../api'
 
-// Initialize reportData as empty arrays to prevent crashes
 const isReady = ref(false)
 const activeTab = ref('peer-eval')
 const peerEvalData = ref([])
 const warData = ref([])
+const students = ref([])
+const selectedStudentId = ref(null)
+const startWeekId = ref('2024-week1')
+const endWeekId = ref('2024-week5')
 
 // Status color helper
 const getStatusColor = (status) => {
@@ -162,111 +196,35 @@ const getStatusColor = (status) => {
   }
 }
 
-// Hardcode mock data in onMounted for immediate display
-onMounted(() => {
+const loadStudents = async () => {
+  const response = await api.get('/students')
+  students.value = response.data.map(student => ({
+    id: student.id,
+    name: `${student.firstName} ${student.lastName}`
+  }))
+  if (!selectedStudentId.value && students.value.length > 0) {
+    selectedStudentId.value = students.value[0].id
+  }
+}
+
+const loadReports = async () => {
+  if (!selectedStudentId.value || !startWeekId.value || !endWeekId.value) return
+  const params = { startWeekId: startWeekId.value, endWeekId: endWeekId.value }
+  const [peerResponse, warResponse] = await Promise.all([
+    api.get(`/students/${selectedStudentId.value}/peer-evaluation-report`, { params }),
+    api.get(`/students/${selectedStudentId.value}/war-report`, { params })
+  ])
+  peerEvalData.value = peerResponse.data
+  warData.value = warResponse.data
+}
+
+onMounted(async () => {
   try {
-    console.log('=== Student Reports component mounting ===')
-    
-    // UC-33 Mock Data for John Doe (Long IDs)
-    peerEvalData.value = [
-      {
-        weekRange: '02-12-2024 - 02-18-2024',
-        overallGrade: '54/60',
-        evaluations: [
-          {
-            evaluatorName: 'Tim Smith',
-            publicComments: 'Good work on the project implementation.',
-            privateComments: 'John is doing well but needs to improve documentation.'
-          },
-          {
-            evaluatorName: 'Lily Fisher',
-            publicComments: 'Need to work harder on testing.',
-            privateComments: 'Dr. Wei, I need to talk more about John\'s code quality.'
-          }
-        ]
-      },
-      {
-        weekRange: '02-19-2024 - 02-25-2024',
-        overallGrade: '55/60',
-        evaluations: [
-          {
-            evaluatorName: 'Bob Johnson',
-            publicComments: 'Excellent progress this week.',
-            privateComments: 'John has shown significant improvement in collaboration.'
-          }
-        ]
-      }
-    ]
-    
-    // UC-34 Mock Data for John Doe (Long IDs)
-    warData.value = [
-      {
-        weekRange: '02-12-2024 - 02-18-2024',
-        activities: [
-          {
-            category: 'Development',
-            plannedActivity: 'Feature Implementation',
-            description: 'Implemented user authentication module',
-            plannedHours: '8',
-            actualHours: '10',
-            status: 'Completed'
-          },
-          {
-            category: 'Documentation',
-            plannedActivity: 'API Documentation',
-            description: 'Documented REST API endpoints',
-            plannedHours: '3',
-            actualHours: '2',
-            status: 'Completed'
-          },
-          {
-            category: 'Testing',
-            plannedActivity: 'Unit Testing',
-            description: 'Wrote unit tests for service layer',
-            plannedHours: '4',
-            actualHours: '4',
-            status: 'Completed'
-          }
-        ]
-      },
-      {
-        weekRange: '02-19-2024 - 02-25-2024',
-        activities: [
-          {
-            category: 'Development',
-            plannedActivity: 'Bug Fixes',
-            description: 'Fixed critical bugs in payment module',
-            plannedHours: '6',
-            actualHours: '8',
-            status: 'Completed'
-          },
-          {
-            category: 'Meeting',
-            plannedActivity: 'Sprint Planning',
-            description: 'Attended sprint planning meeting',
-            plannedHours: '2',
-            actualHours: '2',
-            status: 'Completed'
-          },
-          {
-            category: 'Code Review',
-            plannedActivity: 'Peer Review',
-            description: 'Reviewed team member pull requests',
-            plannedHours: '3',
-            actualHours: '3',
-            status: 'In Progress'
-          }
-        ]
-      }
-    ]
-    
-    // Mark component as ready
+    await loadStudents()
+    await loadReports()
     isReady.value = true
-    console.log('=== Student Reports component ready with mock data ===')
-    
   } catch (error) {
     console.error('Error mounting component:', error)
-    // Still mark as ready to prevent infinite loading
     isReady.value = true
   }
 })

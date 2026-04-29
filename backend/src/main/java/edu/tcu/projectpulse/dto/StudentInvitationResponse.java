@@ -7,6 +7,8 @@ public record StudentInvitationResponse(
         Long sectionId,
         String email,
         String subject,
+        String message,
+        String token,
         LocalDateTime sentAt,
         boolean accepted
 ) {

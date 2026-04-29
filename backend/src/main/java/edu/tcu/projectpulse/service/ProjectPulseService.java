@@ -835,29 +835,33 @@ public class ProjectPulseService {
 
     private String buildInvitationMessage(String email, String token, String customMessage) {
         if (customMessage != null && !customMessage.isBlank()) {
-            return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
+            return customMessage.replace("[Registration link]", buildStudentRegistrationLink(token)).trim();
         }
         return ("Project Pulse has invited " + email + " to join the section.\n\n"
                 + "To complete registration, use this link:\n"
-                + buildRegistrationLink(token) + "\n\n"
+                + buildStudentRegistrationLink(token) + "\n\n"
                 + "If you need help, contact your course admin.").trim();
     }
 
     private String buildInstructorInvitationMessage(String token, String customMessage) {
         if (customMessage != null && !customMessage.isBlank()) {
-            return customMessage.replace("[Registration link]", buildRegistrationLink(token)).trim();
+            return customMessage.replace("[Registration link]", buildInstructorRegistrationLink(token)).trim();
         }
         return ("Hello,\n\n"
                 + "[Name of the Admin] has invited you to join The Peer Evaluation Tool. To complete your registration, please use the link below:\n\n"
-                + buildRegistrationLink(token) + "\n\n"
+                + buildInstructorRegistrationLink(token) + "\n\n"
                 + "If you have any questions or need assistance, feel free to contact [Admin's email] or our team directly.\n\n"
                 + "Please note: This email is not monitored, so do not reply directly to this message.\n\n"
                 + "Best regards,\n"
                 + "Peer Evaluation Tool Team").trim();
     }
 
-    private String buildRegistrationLink(String token) {
-        return "https://project-pulse.local/student-registration?token=" + token;
+    private String buildStudentRegistrationLink(String token) {
+        return "/register-student/" + token;
+    }
+
+    private String buildInstructorRegistrationLink(String token) {
+        return "/register-instructor/" + token;
     }
 
     private boolean matchesSectionName(Team team, String sectionName) {
@@ -1147,6 +1151,8 @@ public class ProjectPulseService {
                 invitation.getSectionId(),
                 invitation.getEmail(),
                 invitation.getSubject(),
+                invitation.getMessage(),
+                invitation.getToken(),
                 invitation.getSentAt(),
                 invitation.isAccepted()
         );
@@ -1166,6 +1172,8 @@ public class ProjectPulseService {
                 invitation.getId(),
                 invitation.getEmail(),
                 invitation.getSubject(),
+                invitation.getMessage(),
+                invitation.getToken(),
                 invitation.getSentAt(),
                 invitation.isAccepted()
         );
@@ -1217,27 +1225,33 @@ public class ProjectPulseService {
     }
 
     public StudentRegistrationResponse registerStudent(StudentRegistrationRequest request) {
-        // Extension 2a: Check if student already has an account
-        if (userRepo.findByEmailIgnoreCase(request.getEmail()).isPresent()) {
+        StudentInvitation invitation = findOpenStudentInvitation(request.getInvitationToken());
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+
+        if (!invitation.getEmail().equalsIgnoreCase(normalizedEmail)) {
+            throw new ApiException("The registration email must match the invited student email");
+        }
+
+        if (userRepo.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
             throw new ApiException("An account with this email already exists");
         }
 
-        // Mock invitation token verification (for now, accept any non-empty token)
-        if (request.getInvitationToken() == null || request.getInvitationToken().trim().isEmpty()) {
-            throw new ApiException("Invalid invitation token");
-        }
-
-        // Create new student account
         UserAccount student = new UserAccount();
-        student.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME)); // Generate Long ID
+        student.setId(sequenceGeneratorService.generateSequence(UserAccount.SEQUENCE_NAME));
         student.setFirstName(request.getFirstName().trim());
         student.setLastName(request.getLastName().trim());
-        student.setEmail(request.getEmail().trim().toLowerCase());
+        student.setEmail(normalizedEmail);
         student.setPassword(passwordEncoder.encode(request.getPassword()));
         student.setRole(Role.STUDENT);
         student.setActive(true);
 
         UserAccount savedStudent = userRepo.save(student);
+        invitation.setAccepted(true);
+        invitationRepo.save(invitation);
+
+        Section section = getSectionEntity(invitation.getSectionId());
+        section.getStudentIds().add(savedStudent.getId());
+        sectionRepo.save(section);
 
         return new StudentRegistrationResponse(
                 savedStudent.getId().toString(),
@@ -1246,6 +1260,21 @@ public class ProjectPulseService {
                 savedStudent.getEmail(),
                 "Student account created successfully"
         );
+    }
+
+    private StudentInvitation findOpenStudentInvitation(String token) {
+        if (token == null || token.isBlank()) {
+            throw new ApiException("Invalid invitation token");
+        }
+
+        StudentInvitation invitation = invitationRepo.findByToken(token.trim())
+                .orElseThrow(() -> new ApiException("Invalid invitation token"));
+
+        if (invitation.isAccepted()) {
+            throw new ApiException("This invitation has already been used");
+        }
+
+        return invitation;
     }
 
     public ProfileUpdateResponse updateStudentProfile(Long studentId, ProfileUpdateRequest req) {
@@ -1398,10 +1427,10 @@ public class ProjectPulseService {
             throw new ApiException("Scores are required");
         }
 
-        // Validate each score is between 1-5
+        // Rubric criteria in the requirements use a 1-10 score range.
         req.getScores().forEach((criterion, score) -> {
-            if (score == null || score < 1 || score > 5) {
-                throw new ApiException("All scores must be between 1 and 5");
+            if (score == null || score < 1 || score > 10) {
+                throw new ApiException("All scores must be between 1 and 10");
             }
         });
 
@@ -1789,18 +1818,31 @@ public class ProjectPulseService {
     // Team WAR Report Methods (UC-32)
     
     public TeamWARReportResponse getTeamWARReport(Long teamId, String weekId) {
-        // Get team information
         Team team = getTeamEntity(teamId);
-        
-        // Get all students in the team
+
         List<UserAccount> teamStudents = team.getStudentIds().stream()
                 .map(this::getUser)
                 .filter(student -> student.getRole() == Role.STUDENT)
+                .sorted(Comparator.comparing(UserAccount::getLastName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(UserAccount::getFirstName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
-        
-        // Generate mock data for testing (replace with actual data fetching)
-        List<StudentActivity> activeStudents = generateMockActiveStudents();
-        List<String> missingStudents = generateMockMissingStudents();
+
+        List<StudentActivity> activeStudents = new ArrayList<>();
+        List<String> missingStudents = new ArrayList<>();
+
+        for (UserAccount student : teamStudents) {
+            List<WeeklyActivity> activities = weeklyActivityRepo
+                    .findByStudentIdAndWeekIdOrderByCreatedAtDesc(student.getId().toString(), weekId);
+
+            if (activities.isEmpty()) {
+                missingStudents.add(fullName(student));
+            } else {
+                activeStudents.add(new StudentActivity(
+                        fullName(student),
+                        activities.stream().map(this::toActivityDetail).toList()
+                ));
+            }
+        }
         
         return new TeamWARReportResponse(
                 teamId,
@@ -1812,141 +1854,77 @@ public class ProjectPulseService {
         );
     }
     
-    private List<StudentActivity> generateMockActiveStudents() {
-        // Mock data for testing as specified
-        List<ActivityDetail> johnDoeActivities = List.of(
-                new ActivityDetail(
-                    "Development", 
-                    "Bug fixing", 
-                    "Fix critical bugs in the authentication module", 
-                    4.0, 
-                    3.5, 
-                    "Completed"
-                ),
-                new ActivityDetail(
-                    "Documentation", 
-                    "API documentation", 
-                    "Write comprehensive API documentation for REST endpoints", 
-                    3.0, 
-                    3.0, 
-                    "Completed"
-                )
-        );
-        
-        List<ActivityDetail> janeSmithActivities = List.of(
-                new ActivityDetail(
-                    "Testing", 
-                    "Unit testing", 
-                    "Write unit tests for the user service module", 
-                    5.0, 
-                    4.5, 
-                    "In Progress"
-                )
-        );
-        
-        // Sort by last name alphabetically
-        return List.of(
-                new StudentActivity("John Doe", johnDoeActivities),
-                new StudentActivity("Jane Smith", janeSmithActivities)
-        );
-    }
-    
-    private List<String> generateMockMissingStudents() {
-        // Mock data for testing as specified
-        return List.of("Bob Lazy");
-    }
-    
     // Student Peer Evaluation Report Methods (UC-33)
     
     public List<WeeklyStudentReport> getStudentPeerEvaluationReport(Long studentId, String startWeekId, String endWeekId) {
-        // Verify student exists
         UserAccount student = getUser(studentId);
         if (student.getRole() != Role.STUDENT) {
             throw new ApiException("Can only generate reports for students");
         }
-        
-        // Generate mock data for testing (exact structure from JSON example)
-        return generateMockStudentPeerEvalReport();
-    }
-    
-    private List<WeeklyStudentReport> generateMockStudentPeerEvalReport() {
-        // Mock data for John Doe as specified
-        // Week 1 (02-12-2024): Grade 54/60, Evaluators: Tim Smith, Lily Fisher
-        List<StudentEvaluation> week1Evaluations = List.of(
-                new StudentEvaluation(
-                    "Tim Smith", 
-                    "Good work on the project implementation.", 
-                    "John is doing well but needs to improve documentation."
-                ),
-                new StudentEvaluation(
-                    "Lily Fisher", 
-                    "Need to work harder on testing.", 
-                    "Dr. Wei, I need to talk more about John's code quality."
-                )
-        );
-        
-        // Week 2 (02-19-2024): Grade 55/60, Evaluator: Bob Johnson
-        List<StudentEvaluation> week2Evaluations = List.of(
-                new StudentEvaluation(
-                    "Bob Johnson", 
-                    "Excellent progress this week.", 
-                    "John has shown significant improvement in collaboration."
-                )
-        );
-        
-        return List.of(
-                new WeeklyStudentReport(
-                    "02-12-2024 - 02-18-2024",
-                    "54/60",
-                    week1Evaluations
-                ),
-                new WeeklyStudentReport(
-                    "02-19-2024 - 02-25-2024",
-                    "55/60",
-                    week2Evaluations
-                )
-        );
+
+        return peerEvaluationRepo.findAll().stream()
+                .filter(evaluation -> evaluation.getEvaluateeId().equals(studentId))
+                .filter(evaluation -> isWeekInRange(evaluation.getWeekId(), startWeekId, endWeekId))
+                .collect(Collectors.groupingBy(PeerEvaluation::getWeekId, TreeMap::new, Collectors.toList()))
+                .entrySet().stream()
+                .map(entry -> new WeeklyStudentReport(
+                        entry.getKey(),
+                        calculateStudentGrade(entry.getValue()),
+                        entry.getValue().stream()
+                                .sorted(Comparator.comparing(PeerEvaluation::getCreatedAt).reversed())
+                                .map(evaluation -> new StudentEvaluation(
+                                        fullName(getUser(evaluation.getEvaluatorId())),
+                                        evaluation.getPublicComment(),
+                                        evaluation.getPrivateComment()
+                                ))
+                                .toList()
+                ))
+                .toList();
     }
     
     // Student WAR Report Methods (UC-34)
     
     public List<WeeklyStudentWARReport> getStudentWARReport(Long studentId, String startWeekId, String endWeekId) {
-        // Verify student exists
         UserAccount student = getUser(studentId);
         if (student.getRole() != Role.STUDENT) {
             throw new ApiException("Can only generate reports for students");
         }
-        
-        // Generate mock data for testing
-        return generateMockStudentWARReport();
+
+        return weeklyActivityRepo.findByStudentIdOrderByCreatedAtDesc(studentId.toString()).stream()
+                .filter(activity -> isWeekInRange(activity.getWeekId(), startWeekId, endWeekId))
+                .collect(Collectors.groupingBy(WeeklyActivity::getWeekId, TreeMap::new, Collectors.toList()))
+                .entrySet().stream()
+                .map(entry -> new WeeklyStudentWARReport(
+                        entry.getKey(),
+                        entry.getValue().stream().map(this::toActivityDetail).toList()
+                ))
+                .toList();
     }
-    
-    private List<WeeklyStudentWARReport> generateMockStudentWARReport() {
-        // Mock data for UC-34 - 2 different weeks with grouped header rows
-        
-        // Week 1 activities
-        List<ActivityDetail> week1Activities = List.of(
-                new ActivityDetail("Development", "Feature Implementation", "Implemented user authentication module", 8.0, 10.0, "Completed"),
-                new ActivityDetail("Documentation", "API Documentation", "Documented REST API endpoints", 3.0, 2.0, "Completed"),
-                new ActivityDetail("Testing", "Unit Testing", "Wrote unit tests for service layer", 4.0, 4.0, "Completed")
+
+    private ActivityDetail toActivityDetail(WeeklyActivity activity) {
+        return new ActivityDetail(
+                titleCase(activity.getCategory().name()),
+                activity.getDescription(),
+                activity.getDescription(),
+                activity.getPlannedHours(),
+                activity.getActualHours(),
+                titleCase(activity.getStatus().name())
         );
-        
-        // Week 2 activities
-        List<ActivityDetail> week2Activities = List.of(
-                new ActivityDetail("Development", "Bug Fixes", "Fixed critical bugs in payment module", 6.0, 8.0, "Completed"),
-                new ActivityDetail("Meeting", "Sprint Planning", "Attended sprint planning meeting", 2.0, 2.0, "Completed"),
-                new ActivityDetail("Code Review", "Peer Review", "Reviewed team member pull requests", 3.0, 3.0, "In Progress")
-        );
-        
-        return List.of(
-                new WeeklyStudentWARReport(
-                    "02-12-2024 - 02-18-2024",
-                    week1Activities
-                ),
-                new WeeklyStudentWARReport(
-                    "02-19-2024 - 02-25-2024",
-                    week2Activities
-                )
-        );
+    }
+
+    private boolean isWeekInRange(String weekId, String startWeekId, String endWeekId) {
+        return !isBlank(weekId)
+                && (isBlank(startWeekId) || weekId.compareTo(startWeekId) >= 0)
+                && (isBlank(endWeekId) || weekId.compareTo(endWeekId) <= 0);
+    }
+
+    private String titleCase(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Arrays.stream(value.toLowerCase(Locale.ROOT).split("_"))
+                .filter(part -> !part.isBlank())
+                .map(part -> part.substring(0, 1).toUpperCase(Locale.ROOT) + part.substring(1))
+                .collect(Collectors.joining(" "));
     }
 }

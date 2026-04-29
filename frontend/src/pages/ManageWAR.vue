@@ -287,7 +287,7 @@ const headers = [
   { title: 'Actions', key: 'actions', sortable: false, width: 100 }
 ]
 
-// Week options (mock data for demo)
+// Week options used by the current project demo data
 const weekOptions = [
   { title: 'Week 1', value: '2024-week1' },
   { title: 'Week 2', value: '2024-week2' },

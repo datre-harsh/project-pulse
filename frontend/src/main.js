@@ -17,6 +17,7 @@ import ManageWAR from './pages/ManageWAR.vue'
 import SubmitPeerEval from './pages/SubmitPeerEval.vue'
 import ViewPeerEvalReport from './pages/ViewPeerEvalReport.vue'
 import RegisterInstructor from './pages/RegisterInstructor.vue'
+import RegisterStudent from './pages/RegisterStudent.vue'
 import EvaluateStudent from './pages/EvaluateStudent.vue'
 import TeamWARReport from './pages/TeamWARReport.vue'
 import StudentPeerEvalReport from './pages/StudentPeerEvalReport.vue'
@@ -35,6 +36,7 @@ const routes = [
   { path: '/peer-evaluation', component: SubmitPeerEval, meta: { roles: ['STUDENT'] } },
   { path: '/peer-evaluation-report', component: ViewPeerEvalReport, meta: { roles: ['STUDENT'] } },
   { path: '/register-instructor/:token', component: RegisterInstructor, meta: { public: true } },
+  { path: '/register-student/:token', component: RegisterStudent, meta: { public: true } },
   { path: '/evaluate-student', component: EvaluateStudent, meta: { roles: ['ADMIN', 'INSTRUCTOR'] } },
   { path: '/team-war-report', component: TeamWARReport, meta: { roles: ['ADMIN', 'INSTRUCTOR', 'STUDENT'] } },
   { path: '/student-peer-eval-report', component: StudentPeerEvalReport, meta: { roles: ['ADMIN', 'INSTRUCTOR'] } },

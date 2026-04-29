@@ -224,7 +224,6 @@ const showErrorMessage = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
 
-// Mock data for dropdowns (replace with actual API calls)
 const weekOptions = [
   { title: '01-15-2024 to 01-21-2024', value: '2024-week1' },
   { title: '01-22-2024 to 01-28-2024', value: '2024-week2' },
@@ -233,11 +232,7 @@ const weekOptions = [
   { title: '02-12-2024 to 02-18-2024', value: '2024-week5' }
 ]
 
-const teamOptions = ref([
-  { title: 'Team Alpha - CS 201', value: 1 },
-  { title: 'Team Beta - CS 201', value: 2 },
-  { title: 'Team Gamma - CS 301', value: 3 }
-])
+const teamOptions = ref([])
 
 // Step handlers
 const onWeekChange = () => {
@@ -290,9 +285,18 @@ const getStatusColor = (status) => {
   }
 }
 
-// Load initial data
-onMounted(() => {
-  // Initialize with default week
+onMounted(async () => {
+  try {
+    const response = await api.get('/teams')
+    teamOptions.value = response.data.map(team => ({
+      title: `${team.name} - ${team.sectionName}`,
+      value: team.id
+    }))
+  } catch (error) {
+    console.error('Error loading teams:', error)
+    errorMessage.value = 'Failed to load teams'
+    showErrorMessage.value = true
+  }
 })
 </script>
 

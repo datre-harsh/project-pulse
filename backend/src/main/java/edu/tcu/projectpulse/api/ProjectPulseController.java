@@ -212,7 +212,11 @@ public class ProjectPulseController {
     // Team WAR Report Endpoints (UC-32)
     
     @GetMapping("/teams/{teamId}/war-report/{weekId}")
-    public TeamWARReportResponse getTeamWARReport(@PathVariable Long teamId, @PathVariable String weekId) {
+    public TeamWARReportResponse getTeamWARReport(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long teamId,
+            @PathVariable String weekId) {
+        service.requireRole(userId, Role.ADMIN, Role.INSTRUCTOR, Role.STUDENT);
         return service.getTeamWARReport(teamId, weekId);
     }
 
@@ -220,9 +224,11 @@ public class ProjectPulseController {
     
     @GetMapping("/students/{studentId}/peer-evaluation-report")
     public List<WeeklyStudentReport> getStudentPeerEvaluationReport(
+            @RequestHeader("X-User-Id") Long userId,
             @PathVariable Long studentId, 
             @RequestParam String startWeekId, 
             @RequestParam String endWeekId) {
+        service.requireRole(userId, Role.ADMIN, Role.INSTRUCTOR);
         return service.getStudentPeerEvaluationReport(studentId, startWeekId, endWeekId);
     }
 
@@ -230,9 +236,11 @@ public class ProjectPulseController {
     
     @GetMapping("/students/{studentId}/war-report")
     public List<WeeklyStudentWARReport> getStudentWARReport(
+            @RequestHeader("X-User-Id") Long userId,
             @PathVariable Long studentId, 
             @RequestParam String startWeekId, 
             @RequestParam String endWeekId) {
+        service.requireRole(userId, Role.ADMIN, Role.INSTRUCTOR);
         return service.getStudentWARReport(studentId, startWeekId, endWeekId);
     }
 

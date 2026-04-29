@@ -53,11 +53,11 @@
                         {{ criterion.description }}
                       </p>
                       
-                      <!-- Slider for scoring (1-5) -->
+                      <!-- Slider for scoring (1-10) -->
                       <v-slider
                         v-model="evaluationScores[criterion.id]"
                         :min="1"
-                        :max="5"
+                        :max="10"
                         :step="1"
                         :ticks="scoreLabels"
                         :tick-size="4"
@@ -79,7 +79,7 @@
                         density="compact"
                       >
                         <v-radio
-                          v-for="score in [1, 2, 3, 4, 5]"
+                          v-for="score in scoreOptions"
                           :key="score"
                           :label="getScoreLabel(score)"
                           :value="score"
@@ -287,14 +287,20 @@ const defaultRubricCriteria = () => ([
 
 // Score labels for slider
 const scoreLabels = {
-  1: 'Poor',
-  2: 'Fair', 
-  3: 'Good',
-  4: 'Very Good',
-  5: 'Excellent'
+  1: '1',
+  2: '2',
+  3: '3',
+  4: '4',
+  5: '5',
+  6: '6',
+  7: '7',
+  8: '8',
+  9: '9',
+  10: '10'
 }
+const scoreOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-// Week options (mock data for demo)
+// Week options used by the current project demo data
 const weekOptions = [
   { title: 'Week 1', value: '2024-week1' },
   { title: 'Week 2', value: '2024-week2' },
@@ -311,7 +317,7 @@ const canSubmit = computed(() => {
   // Check if all criteria have scores
   return rubricCriteria.value.every(criterion => {
     const score = evaluationScores.value[criterion.id]
-    return score && score >= 1 && score <= 5
+    return score && score >= 1 && score <= 10
   })
 })
 
