@@ -9,20 +9,21 @@ public class ProjectPulseApplication {
     public static void main(String[] args) {
         // Ralph: Local runs may provide config through shell environment instead of a checked-in .env file.
         Dotenv dotenv = Dotenv.configure()
-                .ignoreIfMalformed()
                 .ignoreIfMissing()
+                .ignoreIfMalformed()
                 .load();
 
-        setPropertyIfPresent("MONGODB_URI", dotenv.get("MONGODB_URI"));
-        setPropertyIfPresent("MONGODB_DATABASE", dotenv.get("MONGODB_DATABASE"));
-        setPropertyIfPresent("PORT", dotenv.get("PORT"));
-        setPropertyIfPresent("CORS_ALLOWED_ORIGINS", dotenv.get("CORS_ALLOWED_ORIGINS"));
-        
+        applyDotenvValue(dotenv, "MONGODB_URI");
+        applyDotenvValue(dotenv, "MONGODB_DATABASE");
+        applyDotenvValue(dotenv, "PORT");
+        applyDotenvValue(dotenv, "CORS_ALLOWED_ORIGINS");
+
         SpringApplication.run(ProjectPulseApplication.class, args);
     }
 
-    private static void setPropertyIfPresent(String key, String value) {
-        if (value != null && !value.isBlank()) {
+    private static void applyDotenvValue(Dotenv dotenv, String key) {
+        String value = dotenv.get(key);
+        if (value != null && !value.isBlank() && System.getenv(key) == null) {
             System.setProperty(key, value);
         }
     }

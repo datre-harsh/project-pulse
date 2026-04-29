@@ -256,7 +256,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import api from '../api'
+import api, { getCurrentUser } from '../api'
 
 // Reactive data
 const loading = ref(false)
@@ -277,6 +277,13 @@ const showSuccessMessage = ref(false)
 const showErrorMessage = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
+const currentMembership = ref(null)
+
+const defaultRubricCriteria = () => ([
+  { id: 'quality', name: 'Quality of work', description: 'How do you rate the quality of this teammate\'s work?' },
+  { id: 'participation', name: 'Participation', description: 'How actively did your teammate participate in team activities?' },
+  { id: 'communication', name: 'Communication', description: 'How effective was your teammate in communication?' }
+])
 
 // Score labels for slider
 const scoreLabels = {
@@ -312,18 +319,42 @@ const canSubmit = computed(() => {
 const loadTeamMembers = async () => {
   loading.value = true
   try {
-    // TODO: Get actual student ID from authentication
-    const studentId = 1
-    
-    // Mock team members for testing (replace with actual team data)
-    teamMembers.value = [
-      { id: 2, name: 'Alice Johnson' },
-      { id: 3, name: 'Bob Smith' },
-      { id: 4, name: 'Carol Davis' }
-    ].filter(member => member.id !== studentId)
+    const currentUser = getCurrentUser()
+    if (!currentUser?.id) {
+      throw new Error('Please sign in before submitting a peer evaluation')
+    }
+    if (currentUser.role !== 'STUDENT') {
+      throw new Error('Only student accounts can submit peer evaluations')
+    }
+
+    const response = await api.get('/students')
+    const studentMemberships = response.data.filter(student => student.id === currentUser.id)
+    const membership = studentMemberships.find(student => student.teamId) || studentMemberships[0] || null
+
+    if (!membership?.teamId || !membership?.sectionId) {
+      currentMembership.value = null
+      teamMembers.value = []
+      errorMessage.value = 'You must be assigned to a team before you can submit peer evaluations'
+      showErrorMessage.value = true
+      return
+    }
+
+    currentMembership.value = membership
+    teamMembers.value = response.data
+      .filter(student => student.teamId === membership.teamId && student.id !== currentUser.id)
+      .map(student => ({
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+
+    if (teamMembers.value.length === 0) {
+      errorMessage.value = 'No teammates are currently assigned to your team'
+      showErrorMessage.value = true
+    }
   } catch (error) {
     console.error('Error loading team members:', error)
-    errorMessage.value = 'Failed to load team members'
+    errorMessage.value = error.response?.data?.error || error.message || 'Failed to load team members'
     showErrorMessage.value = true
   } finally {
     loading.value = false
@@ -336,12 +367,18 @@ const loadRubricCriteria = async () => {
   
   loading.value = true
   try {
-    // Mock rubric criteria for testing (replace with actual API call)
-    rubricCriteria.value = [
-      { id: 'teamwork', name: 'Teamwork', description: 'Ability to work effectively with team members' },
-      { id: 'coding', name: 'Coding Quality', description: 'Quality and technical excellence of code' },
-      { id: 'communication', name: 'Communication', description: 'Clear and effective communication' }
-    ]
+    if (!currentMembership.value?.sectionId) {
+      throw new Error('Unable to determine your section for rubric loading')
+    }
+
+    const response = await api.get('/rubric', {
+      params: { sectionId: currentMembership.value.sectionId }
+    })
+    rubricCriteria.value = response.data.filter(criterion => criterion.active)
+    if (!rubricCriteria.value.length) {
+      // Ralph: Keep the student demo unblocked when a section has not been linked to a rubric yet.
+      rubricCriteria.value = defaultRubricCriteria()
+    }
     
     // Initialize scores for new criteria
     rubricCriteria.value.forEach(criterion => {
@@ -351,7 +388,8 @@ const loadRubricCriteria = async () => {
     })
   } catch (error) {
     console.error('Error loading rubric criteria:', error)
-    errorMessage.value = 'Failed to load evaluation criteria'
+    rubricCriteria.value = defaultRubricCriteria()
+    errorMessage.value = 'Using default evaluation criteria because the section rubric could not be loaded'
     showErrorMessage.value = true
   } finally {
     loading.value = false

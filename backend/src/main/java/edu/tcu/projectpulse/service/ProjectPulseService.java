@@ -100,6 +100,42 @@ public class ProjectPulseService {
         return userRepo.findById(id).orElseThrow(() -> new ApiException("User not found"));
     }
 
+    public LoginResponse login(LoginRequest req) {
+        UserAccount user = userRepo.findByEmailIgnoreCase(req.email().trim())
+                .orElseThrow(() -> new ApiException("Invalid email or password"));
+        if (!user.isActive()) {
+            throw new ApiException("This account is deactivated");
+        }
+        if (user.getPassword() == null || !passwordEncoder.matches(req.password(), user.getPassword())) {
+            throw new ApiException("Invalid email or password");
+        }
+        return toLoginResponse(user);
+    }
+
+    public LoginResponse getCurrentUser(Long userId) {
+        return toLoginResponse(requireActiveUser(userId));
+    }
+
+    public UserAccount requireActiveUser(Long userId) {
+        if (userId == null) {
+            throw new ApiException("Login required");
+        }
+        UserAccount user = getUser(userId);
+        if (!user.isActive()) {
+            throw new ApiException("This account is deactivated");
+        }
+        return user;
+    }
+
+    public UserAccount requireRole(Long userId, Role... roles) {
+        UserAccount user = requireActiveUser(userId);
+        Set<Role> allowed = new HashSet<>(Arrays.asList(roles));
+        if (!allowed.contains(user.getRole())) {
+            throw new ApiException("This action requires one of these roles: " + allowed);
+        }
+        return user;
+    }
+
     public List<UserSummaryResponse> getInstructorOptions() {
         return userRepo.findByRoleOrderByLastNameAscFirstNameAsc(Role.INSTRUCTOR).stream()
                 .filter(UserAccount::isActive)
@@ -1057,6 +1093,16 @@ public class ProjectPulseService {
         );
     }
 
+    private LoginResponse toLoginResponse(UserAccount user) {
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole()
+        );
+    }
+
     private StudentSearchResponse toStudentSearchResponse(UserAccount student, Section section, Team team) {
         return new StudentSearchResponse(
                 student.getId(),
@@ -1629,11 +1675,10 @@ public class ProjectPulseService {
     
     // Section-Level Evaluation Report Methods (UC-31 Refactored)
     
-    public SectionEvaluationReportResponse getSectionEvaluationReport(Long instructorId, Long sectionId, String weekId) {
-        // Verify instructor has access to this section
-        UserAccount instructor = getUser(instructorId);
-        if (instructor.getRole() != Role.INSTRUCTOR) {
-            throw new ApiException("Only instructors can access section evaluation reports");
+    public SectionEvaluationReportResponse getSectionEvaluationReport(Long viewerId, Long sectionId, String weekId) {
+        UserAccount viewer = getUser(viewerId);
+        if (viewer.getRole() != Role.ADMIN && viewer.getRole() != Role.INSTRUCTOR) {
+            throw new ApiException("Only admins and instructors can access section evaluation reports");
         }
         
         Section section = getSectionEntity(sectionId);

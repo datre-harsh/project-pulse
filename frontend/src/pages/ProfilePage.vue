@@ -276,9 +276,6 @@ const saveProfile = async () => {
   confirmationDialog.value = false
   
   try {
-    // TODO: Get actual student ID from authentication
-    const studentId = 1
-    
     const response = await api.put('/students/profile', {
       firstName: editedProfile.value.firstName,
       lastName: editedProfile.value.lastName,

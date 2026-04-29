@@ -11,6 +11,8 @@ SUBMISSION/
 
 # Local tooling
 /tools/
+.azure-cli/
+.azure-deploy-info.json
 
 # Environment files
 .env

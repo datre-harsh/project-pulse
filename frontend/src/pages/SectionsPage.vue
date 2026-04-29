@@ -52,13 +52,14 @@
         </v-row>
 
         <div class="d-flex flex-wrap ga-3 mt-2">
-          <v-btn color="primary" @click="submitSection">{{ form.id ? 'Save Section' : 'Create Section' }}</v-btn>
+          <v-btn color="primary" :loading="savingSection" :disabled="!canSaveSection" @click="submitSection">{{ form.id ? 'Save Section' : 'Create Section' }}</v-btn>
           <v-btn variant="text" @click="resetForm">Clear</v-btn>
         </div>
       </v-card-text>
     </v-card>
 
     <v-card class="mb-6">
+      <v-card-title>Find Sections</v-card-title>
       <v-card-text>
         <v-row>
           <v-col cols="12" md="6">
@@ -122,14 +123,14 @@
             />
           </v-col>
         </v-row>
-        <v-btn color="primary" @click="sendInvites">Send Invitations</v-btn>
+        <v-btn color="primary" :loading="sendingInvites" :disabled="!canSendInvites" @click="sendInvites">Send Invitations</v-btn>
       </v-card-text>
     </v-card>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import api from '../api'
 
 const sections = ref([])
@@ -140,6 +141,8 @@ const selectedSection = ref(null)
 const search = ref('')
 const error = ref('')
 const success = ref('')
+const savingSection = ref(false)
+const sendingInvites = ref(false)
 
 const headers = [
   { title: 'ID', key: 'id' },
@@ -167,6 +170,14 @@ const invitation = ref({
   subject: '',
   message: ''
 })
+
+const canSaveSection = computed(() =>
+  Boolean(form.value.name.trim() && form.value.startDate && form.value.endDate && form.value.rubricId)
+)
+
+const canSendInvites = computed(() =>
+  Boolean(selectedSection.value && invitation.value.emails.trim())
+)
 
 const parseWeeks = (value) =>
   value
@@ -246,6 +257,7 @@ const submitSection = async () => {
   }
 
   try {
+    savingSection.value = true
     if (form.value.id) {
       await api.put(`/sections/${form.value.id}`, payload)
       success.value = 'Section updated.'
@@ -258,6 +270,8 @@ const submitSection = async () => {
     await loadSections()
   } catch (err) {
     error.value = err.response?.data?.error || 'Unable to save section.'
+  } finally {
+    savingSection.value = false
   }
 }
 
@@ -270,6 +284,7 @@ const sendInvites = async () => {
   success.value = ''
 
   try {
+    sendingInvites.value = true
     await api.post(`/sections/${selectedSection.value.id}/student-invitations`, {
       sectionId: selectedSection.value.id,
       emails: invitation.value.emails,
@@ -281,6 +296,8 @@ const sendInvites = async () => {
     await viewSection(selectedSection.value.id)
   } catch (err) {
     error.value = err.response?.data?.error || 'Unable to send invitations.'
+  } finally {
+    sendingInvites.value = false
   }
 }
 

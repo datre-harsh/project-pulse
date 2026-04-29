@@ -5,7 +5,7 @@
         <h1 class="text-h4">Home</h1>
         <div class="text-body-1 text-medium-emphasis mt-1">Set up the course first, then collect student work and review reports.</div>
       </div>
-      <v-btn color="primary" to="/rubric">Start Setup</v-btn>
+      <v-btn v-if="primaryAction" color="primary" :to="primaryAction.to">{{ primaryAction.title }}</v-btn>
     </div>
 
     <v-row class="mb-2">
@@ -40,8 +40,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import api from '../api'
+import { computed, onMounted, ref } from 'vue'
+import api, { getCurrentUser } from '../api'
 
 const summaryCards = ref([
   { title: 'Rubrics', value: '0' },
@@ -49,9 +49,12 @@ const summaryCards = ref([
   { title: 'Teams', value: '0' }
 ])
 
-const groups = [
+const user = computed(() => getCurrentUser())
+
+const allGroups = [
   {
     title: 'Setup',
+    roles: ['ADMIN'],
     items: [
       { title: '1. Rubric', subtitle: 'Create evaluation criteria', to: '/rubric', icon: 'mdi-clipboard-text' },
       { title: '2. Sections', subtitle: 'Create course sections and active weeks', to: '/sections', icon: 'mdi-school' },
@@ -62,6 +65,7 @@ const groups = [
   },
   {
     title: 'Student Work',
+    roles: ['STUDENT'],
     items: [
       { title: 'Weekly Activities', subtitle: 'Add and update WAR activities', to: '/war', icon: 'mdi-chart-line' },
       { title: 'Peer Evaluation', subtitle: 'Submit teammate evaluations', to: '/peer-evaluation', icon: 'mdi-account-group' },
@@ -70,13 +74,32 @@ const groups = [
   },
   {
     title: 'Reports',
+    roles: ['ADMIN', 'INSTRUCTOR', 'STUDENT'],
     items: [
-      { title: 'Section Evaluations', subtitle: 'Review peer evaluations by section', to: '/evaluate-student', icon: 'mdi-account-check' },
-      { title: 'Team WAR', subtitle: 'Review weekly activity reports by team', to: '/team-war-report', icon: 'mdi-file-chart' },
-      { title: 'Student History', subtitle: 'Review one student over time', to: '/student-peer-eval-report', icon: 'mdi-account-search' }
+      { title: 'Section Evaluations', subtitle: 'Review peer evaluations by section', to: '/evaluate-student', icon: 'mdi-account-check', roles: ['ADMIN', 'INSTRUCTOR'] },
+      { title: 'Team WAR', subtitle: 'Review weekly activity reports by team', to: '/team-war-report', icon: 'mdi-file-chart', roles: ['ADMIN', 'INSTRUCTOR', 'STUDENT'] },
+      { title: 'Student History', subtitle: 'Review one student over time', to: '/student-peer-eval-report', icon: 'mdi-account-search', roles: ['ADMIN', 'INSTRUCTOR'] }
     ]
   }
 ]
+
+const groups = computed(() => {
+  const role = user.value?.role
+  return allGroups
+    .filter(group => group.roles.includes(role))
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.roles || item.roles.includes(role))
+    }))
+    .filter(group => group.items.length)
+})
+
+const primaryAction = computed(() => {
+  if (user.value?.role === 'ADMIN') return { title: 'Start Setup', to: '/rubric' }
+  if (user.value?.role === 'INSTRUCTOR') return { title: 'Open Reports', to: '/evaluate-student' }
+  if (user.value?.role === 'STUDENT') return { title: 'Add Weekly Activities', to: '/war' }
+  return null
+})
 
 onMounted(async () => {
   const [rubrics, sections, teams] = await Promise.all([

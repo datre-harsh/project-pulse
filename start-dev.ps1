@@ -3,10 +3,26 @@ $backendScript = Join-Path $projectRoot 'start-backend-dev.ps1'
 $frontendScript = Join-Path $projectRoot 'start-frontend.ps1'
 $logDir = Join-Path $projectRoot '.codex-test-logs'
 $backendLog = Join-Path $logDir 'backend-dev.log'
+$backendEnv = Join-Path $projectRoot 'backend\.env'
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-docker compose up -d
+$mongoUri = $null
+if (Test-Path $backendEnv) {
+    $mongoUriLine = Get-Content $backendEnv | Where-Object {
+        $_.Trim().StartsWith('MONGODB_URI=')
+    } | Select-Object -First 1
+
+    if ($mongoUriLine) {
+        $mongoUri = $mongoUriLine.Split('=', 2)[1].Trim()
+    }
+}
+
+if (-not $mongoUri -or $mongoUri.StartsWith('mongodb://localhost') -or $mongoUri.StartsWith('mongodb://127.0.0.1')) {
+    docker compose up -d
+} else {
+    Write-Host 'Using remote MongoDB from backend/.env; skipping local Docker MongoDB.' -ForegroundColor Cyan
+}
 
 if (Test-Path $backendLog) {
     Remove-Item $backendLog -Force

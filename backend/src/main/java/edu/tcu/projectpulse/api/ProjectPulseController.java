@@ -16,6 +16,16 @@ public class ProjectPulseController {
 
     private final ProjectPulseService service;
 
+    @PostMapping("/auth/login")
+    public LoginResponse login(@Valid @RequestBody LoginRequest req) {
+        return service.login(req);
+    }
+
+    @GetMapping("/auth/me")
+    public LoginResponse getCurrentUser(@RequestHeader("X-User-Id") Long userId) {
+        return service.getCurrentUser(userId);
+    }
+
     @GetMapping("/rubrics")
     public List<RubricDetailResponse> getRubrics(@RequestParam(required = false) String name) {
         return service.getRubrics(name);
@@ -114,13 +124,8 @@ public class ProjectPulseController {
     }
 
     @GetMapping("/students/profile")
-    public ProfileUpdateResponse getStudentProfile() {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        Long studentId = 1L; // This should come from the authenticated user
-        UserAccount student = service.getUser(studentId);
-        if (student.getRole() != Role.STUDENT) {
-            throw new ApiException("Only students can access their profile through this endpoint");
-        }
+    public ProfileUpdateResponse getStudentProfile(@RequestHeader("X-User-Id") Long userId) {
+        UserAccount student = service.requireRole(userId, Role.STUDENT);
         return new ProfileUpdateResponse(
                 student.getId().toString(),
                 student.getFirstName(),
@@ -131,58 +136,53 @@ public class ProjectPulseController {
     }
 
     @PutMapping("/students/profile")
-    public ProfileUpdateResponse updateStudentProfile(@Valid @RequestBody ProfileUpdateRequest req) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        Long studentId = 1L; // This should come from the authenticated user
-        return service.updateStudentProfile(studentId, req);
+    public ProfileUpdateResponse updateStudentProfile(@RequestHeader("X-User-Id") Long userId, @Valid @RequestBody ProfileUpdateRequest req) {
+        UserAccount student = service.requireRole(userId, Role.STUDENT);
+        return service.updateStudentProfile(student.getId(), req);
     }
 
     // Weekly Activity Report (WAR) Endpoints
     
     @GetMapping("/students/war")
     public List<WeeklyActivityResponse> getWeeklyActivities(
+            @RequestHeader("X-User-Id") Long userId,
             @RequestParam(required = false) String weekId) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        String studentId = "1"; // This should come from the authenticated user
+        String studentId = service.requireRole(userId, Role.STUDENT).getId().toString();
         return service.getWeeklyActivities(studentId, weekId);
     }
 
     @PostMapping("/students/war")
-    public WeeklyActivityResponse createWeeklyActivity(@Valid @RequestBody WeeklyActivityRequest req) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        String studentId = "1"; // This should come from the authenticated user
+    public WeeklyActivityResponse createWeeklyActivity(@RequestHeader("X-User-Id") Long userId, @Valid @RequestBody WeeklyActivityRequest req) {
+        String studentId = service.requireRole(userId, Role.STUDENT).getId().toString();
         return service.createWeeklyActivity(studentId, req);
     }
 
     @PutMapping("/students/war/{activityId}")
     public WeeklyActivityResponse updateWeeklyActivity(
+            @RequestHeader("X-User-Id") Long userId,
             @PathVariable String activityId, 
             @Valid @RequestBody WeeklyActivityRequest req) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        String studentId = "1"; // This should come from the authenticated user
+        String studentId = service.requireRole(userId, Role.STUDENT).getId().toString();
         return service.updateWeeklyActivity(studentId, activityId, req);
     }
 
     @DeleteMapping("/students/war/{activityId}")
-    public void deleteWeeklyActivity(@PathVariable String activityId) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        String studentId = "1"; // This should come from the authenticated user
+    public void deleteWeeklyActivity(@RequestHeader("X-User-Id") Long userId, @PathVariable String activityId) {
+        String studentId = service.requireRole(userId, Role.STUDENT).getId().toString();
         service.deleteWeeklyActivity(studentId, activityId);
     }
 
     // Peer Evaluation Endpoints
     
     @PostMapping("/students/peer-evaluation")
-    public PeerEvaluationResponse submitPeerEvaluation(@Valid @RequestBody PeerEvaluationRequest req) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        Long evaluatorId = 1L; // This should come from the authenticated user
+    public PeerEvaluationResponse submitPeerEvaluation(@RequestHeader("X-User-Id") Long userId, @Valid @RequestBody PeerEvaluationRequest req) {
+        Long evaluatorId = service.requireRole(userId, Role.STUDENT).getId();
         return service.submitPeerEvaluation(evaluatorId, req);
     }
 
     @GetMapping("/students/peer-evaluations/report/{weekId}")
-    public PeerEvaluationReportResponse getPeerEvaluationReport(@PathVariable String weekId) {
-        // TODO: Get student ID from authentication context (currently hardcoded for demo)
-        Long studentId = 1L; // This should come from the authenticated user
+    public PeerEvaluationReportResponse getPeerEvaluationReport(@RequestHeader("X-User-Id") Long userId, @PathVariable String weekId) {
+        Long studentId = service.requireRole(userId, Role.STUDENT).getId();
         return service.getPeerEvaluationReport(studentId, weekId);
     }
 
@@ -196,10 +196,12 @@ public class ProjectPulseController {
     // Instructor Evaluation Endpoints (UC-31 Refactored)
     
     @GetMapping("/instructors/sections/{sectionId}/evaluations/{weekId}")
-    public SectionEvaluationReportResponse getSectionEvaluationReport(@PathVariable Long sectionId, @PathVariable String weekId) {
-        // TODO: Get instructor ID from authentication context (currently hardcoded for demo)
-        Long instructorId = 2L; // This should come from the authenticated user
-        return service.getSectionEvaluationReport(instructorId, sectionId, weekId);
+    public SectionEvaluationReportResponse getSectionEvaluationReport(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long sectionId,
+            @PathVariable String weekId) {
+        Long viewerId = service.requireRole(userId, Role.ADMIN, Role.INSTRUCTOR).getId();
+        return service.getSectionEvaluationReport(viewerId, sectionId, weekId);
     }
 
     // Team WAR Report Endpoints (UC-32)
