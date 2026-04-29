@@ -14,8 +14,7 @@ cd "${SOURCE_DIR}/backend"
 mkdir -p src/main/resources/static
 rm -rf src/main/resources/static/*
 cp -R "${SOURCE_DIR}/frontend/dist/." src/main/resources/static/
-chmod +x ./mvnw
-./mvnw -DskipTests package
+mvn -DskipTests package
 
 mkdir -p "${TARGET_DIR}"
 cp target/project-pulse-backend-*.jar "${TARGET_DIR}/app.jar"
